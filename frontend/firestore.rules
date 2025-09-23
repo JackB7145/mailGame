@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authed() { return request.auth != null; }
+    function isOwner(uid) { return authed() && request.auth.uid == uid; }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /mail/{mailId} {
+      allow read: if authed() && (
+        request.auth.uid == resource.data.fromUid ||
+        request.auth.uid == resource.data.toUid
+      );
+      // Create as DRAFT by sender
+      allow create: if authed() && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.status == "DRAFT";
+      // Client can move DRAFT -> QUEUED; server handles the rest
+      allow update: if authed()
+                    && resource.data.fromUid == request.auth.uid
+                    && resource.data.status == "DRAFT"
+                    && request.resource.data.status == "QUEUED";
+      allow delete: if false;
+    }
+
+    match /mailboxes/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
