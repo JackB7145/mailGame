@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
-import { MailScene } from "./game/Game";
+import { IntroScene } from "./game/scenes/IntroScene";
+import { MailScene } from "./game/scenes/MailScene";
 import { ensureAnonAuth, db } from "./lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import ComposeModal from "./components/ComposeModal";
 import InboxModal from "./components/InboxModal";
 import OutboxModal from "./components/OutboxModal";
+import SignIn from "./components/SignIn";
 import { sendMailViaBackend } from "./lib/api";
+import "./global.css";
 
-const WIDTH = 960;
-const HEIGHT = 540;
+const WIDTH = screen.width * 0.8;
+const HEIGHT = screen.height * 0.8;
 
 export default function App() {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -18,8 +21,11 @@ export default function App() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [outboxOpen, setOutboxOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
+    if (!signedIn) return;
+
     (async () => {
       const u = await ensureAnonAuth();
       setUid(u);
@@ -48,44 +54,36 @@ export default function App() {
         width: WIDTH,
         height: HEIGHT,
         backgroundColor: "#101014",
-        scene: [MailScene],
+        scene: [IntroScene, MailScene], // 👈 start with intro, then jumps to mail
         physics: { default: "arcade" },
         scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
       });
       gameRef.current = game;
-
 
       game.events.on("compose:interact", () => setComposeOpen(true));
       game.events.on("inbox:interact", () => setInboxOpen(true));
     })();
 
     return () => gameRef.current?.destroy(true);
-  }, []);
+  }, [signedIn]);
 
   async function handleSend(to: string, subject: string, body: string) {
     await sendMailViaBackend({
       toUid: to,
       subject,
       body,
-      provider: "MANUAL", 
+      provider: "MANUAL",
     });
   }
 
+  if (!signedIn) return <SignIn onSuccess={() => setSignedIn(true)} />;
+
   return (
-    <div style={{ display: "grid", gap: 12, padding: 16, maxWidth: 1100 }}>
+    <div style={{ display: "grid", alignItems: "center", justifyContent: "center", maxWidth: "100%" }}>
       <h1>Mail Game</h1>
-      <div
-        id="game"
-        style={{
-          border: "1px solid #ccc",
-          width: WIDTH,
-          height: HEIGHT,
-          maxWidth: "100%",
-        }}
-      />
+      <div id="game" style={{ border: "1px solid #333", width: WIDTH, height: HEIGHT, maxWidth: "100%" }} />
       <p>
-        Move with arrows. Press <b>E</b> at the red box to compose, or the blue
-        box to read your mail.
+        Arrows/WASD to move. Press <b>E</b> at the bench to compose, the mailbox to read, or the wardrobe to change your look.
       </p>
 
       <ComposeModal
@@ -100,17 +98,9 @@ export default function App() {
         }}
       />
 
-      <InboxModal
-        open={inboxOpen}
-        meUid={uid ?? ""}
-        onClose={() => setInboxOpen(false)}
-      />
+      <InboxModal open={inboxOpen} meUid={uid ?? ""} onClose={() => setInboxOpen(false)} />
 
-      <OutboxModal
-        open={outboxOpen}
-        meUid={uid ?? ""}
-        onClose={() => setOutboxOpen(false)}
-      />
+      <OutboxModal open={outboxOpen} meUid={uid ?? ""} onClose={() => setOutboxOpen(false)} />
     </div>
   );
 }
