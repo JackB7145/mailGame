@@ -11,8 +11,8 @@ import SignIn from "./components/signIn";
 import { sendMailViaBackend } from "./lib/api";
 import "./global.css";
 
-const WIDTH = screen.width * 0.8;
-const HEIGHT = screen.height * 0.8;
+const WIDTH = screen.width*0.95;
+const HEIGHT = screen.height*0.95;
 
 export default function App() {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -80,12 +80,7 @@ export default function App() {
 
   return (
     <div style={{ display: "grid", alignItems: "center", justifyContent: "center", maxWidth: "100%" }}>
-      <h1>Mail Game</h1>
-      <div id="game" style={{ border: "1px solid #333", width: WIDTH, height: HEIGHT, maxWidth: "100%" }} />
-      <p>
-        Arrows/WASD to move. Press <b>E</b> at the bench to compose, the mailbox to read, or the wardrobe to change your look.
-      </p>
-
+      <div id="game" style={{ display: "flex", justifyContent: "center", alignItems:"center", border: "1px solid #333", width: WIDTH, height: HEIGHT, maxWidth: "100%" }} />
       <ComposeModal
         open={composeOpen}
         meUid={uid ?? ""}

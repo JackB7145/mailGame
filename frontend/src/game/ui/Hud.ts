@@ -74,31 +74,40 @@ export class Hud {
     return this.widgets.get(name)?.container;
   }
 
-  /** Update anchored widget positions on resize. */
-  private layout() {
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
+  // src/game/ui/Hud.ts
+private layout() {
+  const w = this.scene.scale.width;
+  const h = this.scene.scale.height;
 
-    for (const [_, rec] of this.widgets) {
-      if (!rec.place) continue;
-      const { container } = rec;
-      const { anchor, offsetX, offsetY } = rec.place;
+  for (const rec of this.widgets.values()) {
+    if (!rec.place) continue;
+    const c = rec.container;
+    const { anchor, offsetX, offsetY } = rec.place;
 
-      let x = 0, y = 0;
-      switch (anchor) {
-        case "top-left":     x = offsetX;          y = offsetY;          break;
-        case "top-right":    x = w - offsetX;      y = offsetY;          break;
-        case "bottom-left":  x = offsetX;          y = h - offsetY;      break;
-        case "bottom-right": x = w - offsetX;      y = h - offsetY;      break;
-        case "center":       x = Math.round(w/2);  y = Math.round(h/2);  break;
-      }
+    // Use actual drawn size, not container.width (often 0)
+    const b = c.getBounds();
+    const cw = Math.round(b.width);
+    const ch = Math.round(b.height);
 
-      // If you want right/bottom offsets measured from edges, set origin accordingly:
-      if (anchor.endsWith("right")) container.setPosition(x - container.width, y);
-      else if (anchor.startsWith("bottom")) container.setPosition(x, y - container.height);
-      else container.setPosition(x, y);
+    let x = 0, y = 0;
+    switch (anchor) {
+      case "top-left":
+        x = offsetX; y = offsetY; break;
+      case "top-right":
+        x = w - offsetX - cw; y = offsetY; break;
+      case "bottom-left":
+        x = offsetX; y = h - offsetY - ch; break;
+      case "bottom-right":
+        x = w - offsetX - cw; y = h - offsetY - ch; break;
+      case "center":
+        x = Math.round((w - cw) / 2);
+        y = Math.round((h - ch) / 2);
+        break;
     }
+    c.setPosition(x, y);
   }
+}
+
 
   /** Remove and destroy a widget. */
   remove(name: string) {
