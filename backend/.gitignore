@@ -1,3 +1,4 @@
 .env
 serviceAccount.json
 .venv
+.vercel

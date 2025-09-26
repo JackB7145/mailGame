@@ -1,3 +1,4 @@
+// src/game/audio/music.ts
 import Phaser from "phaser";
 
 export class Music {
@@ -5,23 +6,36 @@ export class Music {
   private static htmlFallback?: HTMLAudioElement;
   private static armed = false;
 
-  static play(scene: Phaser.Scene, key = "bgm", volume = 0.35) {
-    // Already playing?
+  // Central volume [0..1] – restore from storage if present
+  private static vol = (() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("courier:volume") || "");
+      if (!Number.isNaN(saved)) return clamp01(saved);
+    } catch {}
+    return 0.5;
+  })();
+
+  /** Start bgm if not already playing. Uses Phaser WebAudio; falls back to <audio>. */
+  static play(scene: Phaser.Scene, key = "bgm", volume = this.vol) {
+    // If already playing (either engine), just ensure volume is correct and return
     if (this.current?.isPlaying || this.htmlFallback) {
-      console.debug("[Music] already playing");
+      this.setVolume(volume, scene, 0);
       return this.current;
     }
 
     const startPhaser = () => {
-      if (this.current?.isPlaying || this.htmlFallback) return;
+      if (this.current?.isPlaying) return;
       try {
         const s = scene.sound.add(key, { loop: true, volume: 0 });
-        s.play(); // can throw if still locked
-        scene.tweens.add({ targets: s, volume, duration: 800, ease: "Sine.easeOut" });
+        s.play(); // may throw if audio is still locked
+        this.vol = clamp01(volume);
+        scene.tweens.add({ targets: s, volume: this.vol, duration: 120, ease: "Sine.easeOut" });
         this.current = s;
         scene.sound.pauseOnBlur = false;
         this.disarm(scene);
-        console.debug("[Music] Phaser WebAudio started");
+        // if a <audio> fallback was playing from earlier, kill it now
+        if (this.htmlFallback) { try { this.htmlFallback.pause(); } catch {} this.htmlFallback = undefined; }
+        console.debug("[Music] WebAudio started");
       } catch (err) {
         console.warn("[Music] WebAudio play failed, falling back to <audio>", err);
         this.startHtmlFallback(volume);
@@ -29,13 +43,12 @@ export class Music {
       }
     };
 
-    // If unlocked, try immediately
     if (!scene.sound.locked) {
       startPhaser();
       return this.current;
     }
 
-    // Otherwise arm once; any gesture/unlock triggers start
+    // Arm one-shots to start after first gesture/unlock
     if (!this.armed) {
       this.armed = true;
       const onUnlock = () => { startPhaser(); };
@@ -45,7 +58,6 @@ export class Music {
       scene.input.once("pointerdown", onGesture);
       scene.input.keyboard?.once("keydown", onGesture as any);
 
-      // extra DOM safety for mobile
       const domGesture = () => { startPhaser(); };
       window.addEventListener("touchstart", domGesture, { once: true, passive: true });
       window.addEventListener("pointerdown", domGesture, { once: true });
@@ -59,11 +71,38 @@ export class Music {
     return this.current;
   }
 
+  static setVolume(v: number, scene?: Phaser.Scene, tweenMs = 0) {
+  this.vol = clamp01(v);
+
+  if (this.htmlFallback) {
+    this.htmlFallback.volume = this.vol; // exact 0 = mute
+  }
+
+  const s = this.current;
+  if (s) {
+    if (scene && tweenMs > 0) {
+      // Tween the 'volume' property; works across Phaser sound types
+      scene.tweens.add({ targets: s, volume: this.vol, duration: tweenMs, ease: "Sine.easeOut" });
+    } else {
+      // Some Phaser typings don’t expose setVolume; fall back to property write
+      const anyS = s as any;
+      if (typeof anyS.setVolume === "function") anyS.setVolume(this.vol);
+      else anyS.volume = this.vol;
+    }
+  }
+
+  try { localStorage.setItem("courier:volume", String(this.vol)); } catch {}
+}
+
+
+  static getVolume() { return this.vol; }
+
   private static startHtmlFallback(volume: number) {
     try {
-      const el = new Audio("bgm.mp3"); // relative path (works under subpaths)
+      const el = new Audio("bgm.mp3"); // served from /public
       el.loop = true;
-      el.volume = Math.max(0, Math.min(1, volume));
+      this.vol = clamp01(volume);
+      el.volume = this.vol;
       el.play().then(() => {
         this.htmlFallback = el;
         console.debug("[Music] HTMLAudio fallback started");
@@ -126,3 +165,5 @@ export class Music {
     return !!this.htmlFallback || !!this.current?.isPlaying;
   }
 }
+
+function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }

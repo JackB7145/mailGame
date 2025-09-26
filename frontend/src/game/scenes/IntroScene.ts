@@ -1,5 +1,6 @@
 // src/game/scenes/IntroScene.ts
 import Phaser from "phaser";
+import { Music } from "../audio/music"; // same path as in MailScene
 
 type Spawn = { x: number; y: number };
 
@@ -14,28 +15,26 @@ export class IntroScene extends Phaser.Scene {
     { x: 1400, y: 1400 },
   ];
 
-  // HTMLAudio fallback handle (if WebAudio refuses)
-  private htmlBgm?: HTMLAudioElement;
-
   constructor() { super("intro"); }
 
   preload() {
-    // Use RELATIVE path so subpaths work. File must live at /public/bgm.mp3
-    this.load.audio("bgm", ["bgm.mp3"]);
+    this.load.audio("bgm", ["bgm.mp3"]); // served from /public/bgm.mp3
     this.load.on("filecomplete-audio-bgm", () => {
       console.debug("[Intro] bgm loaded:", this.cache.audio.exists("bgm"));
     });
-    this.load.on("loaderror", (_key, file: any) => {
-      console.warn("[Intro] Load error:", file?.src || _key);
+    this.load.on("loaderror", (file: any) => {
+      console.warn("[Intro] Load error:", file?.src);
     });
   }
 
   create() {
-    // Safety: ensure WebAudio is enabled in your game config:
-    // audio: { disableWebAudio: false, noAudio: false }
-
     const w = this.scale.width;
     const h = this.scale.height;
+
+    // quick visual to confirm scene created (remove whenever)
+    this.add.text(12, 12, "Loading…", {
+      color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "12px"
+    }).setScrollFactor(0).setDepth(10000).setName("intro-hint");
 
     // Launch MailScene underneath; defer its customizer
     const spawn = Phaser.Utils.Array.GetRandom(this.SPAWNS);
@@ -45,50 +44,32 @@ export class IntroScene extends Phaser.Scene {
     this.time.delayedCall(20, () => {
       this.buildCloudCurtains(w, h);
       this.scene.bringToTop();
+      const hint = this.children.getByName("intro-hint"); hint?.destroy();
     });
 
-    // ---- MUSIC START (bullet-proof) ----
-    const startPhaserMusic = () => {
-      if (this.sound.get("bgm")) return; // already playing
+    // ---- MUSIC START (shared singleton with slider) ----
+    const safeStart = () => {
       try {
-        const s = this.sound.add("bgm", { loop: true, volume: 0.45 });
-        s.play(); // may throw if still locked
-        this.sound.pauseOnBlur = false;
-        console.debug("[Intro] WebAudio music started");
-      } catch (err) {
-        console.warn("[Intro] WebAudio play failed, falling back to HTMLAudio", err);
-        this.startHtmlFallback();
+        const v = typeof Music.getVolume === "function" ? Music.getVolume() : 0.5;
+        if (!this.sound.locked) Music.play(this, "bgm", v);
+      } catch (e) {
+        console.warn("[Intro] Music.start skipped:", e);
       }
     };
 
-    const tryStart = () => {
-      if (!this.cache.audio.exists("bgm")) {
-        console.warn("[Intro] bgm not in cache yet (load error or wrong path?)");
-      }
-      if (this.sound.locked) {
-        // If locked here, we rely on gesture/unlock below
-        console.debug("[Intro] Audio is locked; waiting for gesture/unlock");
-        return;
-      }
-      startPhaserMusic();
-    };
+    if (!this.sound.locked) safeStart();
 
-    // Try immediately (works if browser isn't locked)
-    tryStart();
-
-    // If locked, arm once for any gesture/unlock
     if (this.sound.locked) {
-      const hint = this.add.text(
-        12, 12, "Click or press any key to enable sound",
+      const unlockHint = this.add.text(
+        12, 28, "Click/press any key to enable sound",
         { color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "12px" }
       ).setScrollFactor(0).setDepth(10000);
 
-      const begin = () => { hint.destroy(); startPhaserMusic(); disarm(); };
-
-      const onUnlock = () => { begin(); };
-      const onPointer = () => { begin(); };
-      const onKey = () => { begin(); };
-      const onTouch = () => { begin(); };
+      const begin = () => { unlockHint.destroy(); safeStart(); disarm(); };
+      const onUnlock = () => begin();
+      const onPointer = () => begin();
+      const onKey = () => begin();
+      const onTouch = () => begin();
 
       const disarm = () => {
         this.sound.off("unlocked", onUnlock);
@@ -104,28 +85,10 @@ export class IntroScene extends Phaser.Scene {
       window.addEventListener("touchstart", onTouch, { once: true, passive: true });
       window.addEventListener("pointerdown", onPointer, { once: true });
     }
-    // ------------------------------------
-  }
-
-  private startHtmlFallback() {
-    if (this.htmlBgm) return;
-    try {
-      const el = new Audio("bgm.mp3"); // relative path (served from /public)
-      el.loop = true;
-      el.volume = 0.45;
-      el.play().then(() => {
-        this.htmlBgm = el;
-        console.debug("[Intro] HTMLAudio fallback started");
-      }).catch(err => {
-        console.error("[Intro] HTMLAudio fallback failed to play", err);
-      });
-    } catch (e) {
-      console.error("[Intro] HTMLAudio fallback error", e);
-    }
+    // ---------------------------------------------------
   }
 
   private buildCloudCurtains(w: number, h: number) {
-    // White backfill to guarantee no gaps during spawn
     this.add.rectangle(0, 0, w, h, 0xffffff, 1)
       .setOrigin(0).setScrollFactor(0).setDepth(9998);
 

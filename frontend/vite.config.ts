@@ -1,7 +1,9 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
+// IMPORTANT: keep base at "/" so /public assets resolve like "/bgm.mp3"
 export default defineConfig({
   plugins: [react()],
-})
+  base: "/",
+  assetsInclude: ["**/*.mp3", "**/*.wav", "**/*.ogg"]
+});

@@ -1,7 +1,9 @@
 // src/game/scenes/MailScene.ts
-import Phaser from "phaser";
-import { Music } from "../audio/Music";
 import { Customizer, Customization, Accessory } from "../ui/Customizer";
+import Phaser from "phaser";
+import { Music } from "../audio/music";
+import { Hud } from "../ui/Hud";
+import { createVolumeSlider } from "../ui/HudVolumeSlider";
 import {
   addWorldFence,
   createBenchWithQuill,
@@ -52,9 +54,7 @@ export class MailScene extends Phaser.Scene {
 
   // ---- AUDIO PRELOAD (idempotent) ----
   preload() {
-    // Load only if not already in the cache.
     if (!this.cache.audio.exists("bgm")) {
-      // RELATIVE path so it works under subpaths; file must be in /public/bgm.mp3
       this.load.audio("bgm", ["bgm.mp3"]);
     }
   }
@@ -71,14 +71,9 @@ export class MailScene extends Phaser.Scene {
 
     // --- START/ENSURE BACKGROUND MUSIC (loops forever, autoplay-safe) ---
     const startMusic = () => Music.play(this, "bgm", 0.5);
-    // Try immediately if not locked
     if (!this.sound.locked) startMusic();
-    // If locked, arm one-shots for the first gesture/unlock
     if (this.sound.locked) {
-      const begin = () => {
-        startMusic();
-        disarm();
-      };
+      const begin = () => { startMusic(); disarm(); };
       const onUnlock = () => begin();
       const onPointer = () => begin();
       const onKey = () => begin();
@@ -176,6 +171,103 @@ export class MailScene extends Phaser.Scene {
       this.deferCustomize ? "…" : "Customize your courier…",
       { color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "14px" }
     ).setScrollFactor(0).setDepth(9999).setName("hud-text");
+
+    // ===== VOLUME SLIDER (HUD) =====
+    const addVolumeSlider = (w = 140, h = 8) => {
+      const container = this.add.container(0, 0).setScrollFactor(0).setDepth(10000);
+      container.setName("volume-slider");
+
+      // panel
+      const panel = this.add.graphics();
+      panel.fillStyle(0x000000, 0.35).fillRoundedRect(-12, -10, w + 64, 40, 8);
+      panel.lineStyle(1, 0xffffff, 0.15).strokeRoundedRect(-12, -10, w + 64, 40, 8);
+      container.add(panel);
+
+      // label
+      const label = this.add.text(0, 0, "Vol", {
+        color: "#ffffff",
+        fontFamily: "Courier New, monospace",
+        fontSize: "14px",
+      }).setOrigin(0, 0.5);
+      container.add(label);
+
+      // slider gfx
+      const trackX = 40;
+      const track = this.add.graphics().setPosition(trackX, 0);
+      const fill  = this.add.graphics().setPosition(trackX, 0);
+      const thumb = this.add.graphics().setPosition(trackX, 0);
+
+      const drawTrack = () => {
+        track.clear();
+        track.fillStyle(0xffffff, 0.25).fillRoundedRect(0, -h/2, w, h, 4);
+        track.lineStyle(1, 0xffffff, 0.2).strokeRoundedRect(0, -h/2, w, h, 4);
+      };
+      const drawFill = (p: number) => {
+        const ww = Math.max(4, Math.round(w * p));
+        fill.clear();
+        fill.fillStyle(0xffffff, 0.65).fillRoundedRect(0, -h/2, ww, h, 4);
+      };
+      const drawThumb = (p: number) => {
+        const tx = Math.round(w * p);
+        thumb.clear();
+        thumb.fillStyle(0xffffff, 1).fillCircle(tx, 0, 6);
+        thumb.lineStyle(2, 0x222222, 0.8).strokeCircle(tx, 0, 6);
+      };
+
+      let value = (typeof (Music as any).getVolume === "function") ? (Music as any).getVolume() : 0.5;
+      drawTrack();
+      drawFill(value);
+      drawThumb(value);
+
+      // hit zone
+      const hit = this.add.zone(trackX, 0, w, 24).setOrigin(0, 0.5);
+      hit.setInteractive({ cursor: "pointer" });
+      container.add([track, fill, thumb, hit]);
+
+      const applyValue = (v: number) => {
+        value = Phaser.Math.Clamp(v, 0, 1);
+        drawFill(value);
+        drawThumb(value);
+        if (typeof (Music as any).setVolume === "function") {
+          (Music as any).setVolume(value, this, 60);
+        }
+      };
+
+     // AFTER (use screen coords + zone bounds)
+      hit.setScrollFactor(0);
+
+      const setFromPointer = (p: Phaser.Input.Pointer) => {
+        const b = hit.getBounds();                 // screen-space rect
+        const clamped = Phaser.Math.Clamp(p.x - b.left, 0, b.width);
+        applyValue(clamped / b.width);
+      };
+
+      // if hot-reloading, clear old listeners (optional)
+      hit.removeAllListeners?.();
+
+      hit.on("pointerdown", (p: Phaser.Input.Pointer) => setFromPointer(p));
+      hit.on("pointermove", (p: Phaser.Input.Pointer) => { if (p.isDown) setFromPointer(p); });
+
+
+
+      // mute toggle via label
+      label.setInteractive({ cursor: "pointer" }).on("pointerdown", () => {
+        const newV = value > 0 ? 0 : 0.5;
+        applyValue(newV);
+      });
+
+      // anchor top-right & keep on resize
+      const place = () => {
+        container.setPosition(this.scale.width - (w + 88), 28);
+      };
+      this.scale.on("resize", () => place());
+      place();
+
+      return container;
+    };
+
+    addVolumeSlider();
+    // ===== END VOLUME SLIDER =====
 
     // customizer overlay
     this.customizer = new Customizer(this, {

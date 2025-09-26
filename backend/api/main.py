@@ -3,10 +3,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from .auth import verify_bearer
-from .models import SendMailRequest, MailDoc
-from .firestore import get_user_address, create_mail_doc, update_mail_doc, list_inbox, list_outbox
-from .providers import render_html, send_letter
+from api.auth import verify_bearer
+from api.models import SendMailRequest, MailDoc
+from api.firestore import get_user_address, create_mail_doc, update_mail_doc, list_inbox, list_outbox
+from api.providers import render_html, send_letter
 
 from fastapi import HTTPException
 from google.cloud import firestore
@@ -20,28 +20,33 @@ load_dotenv()
 
 app = FastAPI(title="MailGame Backend")
 
-origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "https://mailme-39xruhdv4-jack-branstons-projects.vercel.app",
+        "http://localhost:3000",     # Next.js default
+        "http://localhost:5173",     # Vite
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/api/health")
+@app.get("/v1/health")
 async def health():
     return {"ok": True}
 
-@app.get("/api/mail/inbox")
+@app.get("/v1/mail/inbox")
 async def api_inbox(uid: str = Depends(verify_bearer)):
     return list_inbox(uid, limit=20)
 
-@app.get("/api/mail/outbox")
+@app.get("/v1/mail/outbox")
 async def api_outbox(uid: str = Depends(verify_bearer)):
     return list_outbox(uid, limit=20)
 
-@app.post("/api/mail/send", response_model=MailDoc)
+@app.post("/v1/mail/send", response_model=MailDoc)
 async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
     to_addr = get_user_address(req.toUid)
     if not to_addr:
@@ -78,7 +83,7 @@ async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
         providerRef=provider_ref,
     )
 
-@app.delete("/api/mail/{mail_id}")
+@app.delete("/v1/mail/{mail_id}")
 async def delete_mail(mail_id: str, uid: str = Depends(verify_bearer)):
     
     db = firestore.client()
@@ -95,6 +100,6 @@ async def delete_mail(mail_id: str, uid: str = Depends(verify_bearer)):
     doc_ref.delete()
     return {"ok": True, "id": mail_id}
 
-@app.get("/api/mail/outbox")
+@app.get("/v1/mail/outbox")
 async def api_outbox(uid: str = Depends(verify_bearer)):
     return list_outbox(uid, limit=20)

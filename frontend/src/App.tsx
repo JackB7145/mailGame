@@ -7,7 +7,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import ComposeModal from "./components/ComposeModal";
 import InboxModal from "./components/InboxModal";
 import OutboxModal from "./components/OutboxModal";
-import SignIn from "./components/SignIn";
+import SignIn from "./components/signIn";
 import { sendMailViaBackend } from "./lib/api";
 import "./global.css";
 
