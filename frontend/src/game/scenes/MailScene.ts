@@ -1,9 +1,8 @@
-// src/game/scenes/MailScene.ts
 import Phaser from "phaser";
 import { Music } from "../audio/music";
 import { Hud } from "../ui/Hud";
 import { createVolumeSlider } from "../ui/HudVolumeSlider";
-import { createFullscreenButton } from "../ui/widgets/FullscreenButton"; // ← NEW
+import { createFullscreenButton } from "../ui/widgets/FullscreenButton";
 
 import { Customizer, Customization } from "../ui/Customizer";
 import { startMusicWithUnlock } from "../systems/MusicStarter";
@@ -12,6 +11,10 @@ import { createPhysicsWorld } from "../world/WorldPhysics";
 import { createWorldObjects, Interactables } from "../world/WorldObjects";
 import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
+
+// editor
+import { LAYOUT } from "../world/layout";
+import { SceneEditor } from "../editor";
 
 type Spawn = { x: number; y: number };
 
@@ -33,6 +36,9 @@ export class MailScene extends Phaser.Scene {
   private custom: Customization = { color: 0x00ff6a, accessory: "none" };
   private customizer!: Customizer;
 
+  private obstacles!: Phaser.Physics.Arcade.StaticGroup;
+  private editor?: SceneEditor;
+
   constructor() { super(MailScene.KEY); }
 
   preload() {
@@ -51,44 +57,36 @@ export class MailScene extends Phaser.Scene {
   create() {
     this.input.setTopOnly(true);
 
-    // state restore
     try {
       const raw = localStorage.getItem("courier:custom");
       if (raw) this.custom = JSON.parse(raw);
     } catch {}
 
-    // systems
     startMusicWithUnlock(this, "bgm");
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
-    const obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
-    this.inter = createWorldObjects(this, obstacles);
+    this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
+    this.inter = createWorldObjects(this, this.obstacles);
 
-    // player
     const startX = this.spawnFromIntro?.x ?? 980;
     const startY = this.spawnFromIntro?.y ?? 1040;
     this.player = new PlayerController(this, startX, startY, this.custom);
-    this.player.attachColliders(obstacles);
+    this.player.attachColliders(this.obstacles);
     this.player.followWith(this.cameras.main);
 
-    // input
     this.keys = createInput(this);
 
-    // HUD
     this.hud = new Hud(this);
     this.addHint(this.deferCustomize ? "…" : "Customize your courier…");
-    // Fullscreen button (top-right)
+
     const fsBtn = createFullscreenButton(this, { width: 36, height: 28 });
     this.hud.add("fullscreen", fsBtn);
     this.hud.anchor("fullscreen", "top-right", 24, 24);
 
-    // Volume slider to the LEFT of the fullscreen button
-    const fsW = Math.round(fsBtn.getBounds().width); // robust even if container.width = 0
-    const spacing = 8;
     const vol = createVolumeSlider(this, { width: 140, height: 8, label: "Vol" });
+    const fsW = Math.round(fsBtn.getBounds().width);
     this.hud.add("volume", vol);
-    this.hud.anchor("volume", "top-right", 24 + fsW + spacing, 24);
+    this.hud.anchor("volume", "top-right", 24 + fsW + 8, 24);
 
-    // customizer
     this.customizer = new Customizer(this, {
       initial: this.custom,
       onChange: (c) => {
@@ -110,10 +108,24 @@ export class MailScene extends Phaser.Scene {
       this.customizing = true;
       this.customizer.open();
     }
+
+    // F10 toggles the editor
+    this.input.keyboard?.on("keydown-F10", () => {
+      if (this.editor) {
+        this.editor.disable();
+        this.editor = undefined;
+        // restart to clean play state
+        this.scene.restart({ spawnX: this.player.body.x, spawnY: this.player.body.y, deferCustomize: false });
+      } else {
+        this.editor = new SceneEditor(this, this.obstacles, LAYOUT, { grid: 20, startPalette: "tree" });
+        this.editor.enable();
+        this.setHint("EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save");
+      }
+    });
   }
 
   update() {
-    if (this.customizing) {
+    if (this.customizing || this.editor) {
       this.player.body.setVelocity(0, 0);
       return;
     }
@@ -144,7 +156,6 @@ export class MailScene extends Phaser.Scene {
     this.setHint("Customize your courier…");
   }
 
-  // ---------- HUD helpers ----------
   private addHint(text: string) {
     const c = this.hud.addText("hint", text, 12, 12);
     this.hud.anchor("hint", "top-left", 12, 12);
