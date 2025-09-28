@@ -1,13 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Lamp extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number,
-    scale = 1.8
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number, scale = 1.8) {
     super(scene, obstacles, "lamp", x, y);
 
     const postH = Math.round(52 * scale);
@@ -26,5 +23,12 @@ export class Lamp extends BaseObject {
     if (obstacles) {
       this.addStaticBox(0, -postH / 2 + 14, postW + 4, Math.round(postH * 0.6)).setVisible(false);
     }
+  }
+}
+
+export class LampFactory implements ObjectFactory {
+  readonly type = "lamp";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Lamp(scene, obstacles, item.x, item.y, 50);
   }
 }

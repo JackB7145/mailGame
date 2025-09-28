@@ -110,6 +110,7 @@ export class IntroScene extends Phaser.Scene {
         ease: "Sine.easeInOut",
         onComplete: () => {
           if (--remaining === 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const mail = this.scene.get("mail") as any;
             if (mail?.scene?.isActive() && typeof mail.openCustomizer === "function") {
               mail.openCustomizer();

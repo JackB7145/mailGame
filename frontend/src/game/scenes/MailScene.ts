@@ -1,3 +1,4 @@
+// src/game/scenes/MailScene.ts
 import Phaser from "phaser";
 import { Music } from "../audio/music";
 import { Hud } from "../ui/Hud";
@@ -13,7 +14,7 @@ import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
 
 // editor
-import { LAYOUT } from "../world/layout";
+import { LAYOUT, Item } from "../world/layout";
 import { SceneEditor } from "../editor";
 
 type Spawn = { x: number; y: number };
@@ -39,12 +40,17 @@ export class MailScene extends Phaser.Scene {
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
   private editor?: SceneEditor;
 
-  constructor() { super(MailScene.KEY); }
+  constructor() {
+    super(MailScene.KEY);
+  }
 
   preload() {
     if (!this.cache.audio.exists("bgm")) {
       this.load.audio("bgm", ["bgm.mp3"]);
     }
+
+    // ✅ preload the JSON map (public/maps/mymap.json)
+    this.load.json("map", "maps/mymap.json");
   }
 
   init(data: { spawnX?: number; spawnY?: number; deferCustomize?: boolean }) {
@@ -65,7 +71,10 @@ export class MailScene extends Phaser.Scene {
     startMusicWithUnlock(this, "bgm");
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
     this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
-    this.inter = createWorldObjects(this, this.obstacles);
+
+    // ✅ Use JSON map from cache for world creation
+    const mapData: Item[] = this.cache.json.get("map");
+    this.inter = createWorldObjects(this, this.obstacles, mapData);
 
     const startX = this.spawnFromIntro?.x ?? 980;
     const startY = this.spawnFromIntro?.y ?? 1040;
@@ -92,7 +101,9 @@ export class MailScene extends Phaser.Scene {
       onChange: (c) => {
         this.custom = c;
         this.player.setCustomization(c);
-        try { localStorage.setItem("courier:custom", JSON.stringify(c)); } catch {}
+        try {
+          localStorage.setItem("courier:custom", JSON.stringify(c));
+        } catch {}
       },
       onFinish: () => {
         this.customizing = false;
@@ -114,12 +125,21 @@ export class MailScene extends Phaser.Scene {
       if (this.editor) {
         this.editor.disable();
         this.editor = undefined;
-        // restart to clean play state
-        this.scene.restart({ spawnX: this.player.body.x, spawnY: this.player.body.y, deferCustomize: false });
+        this.scene.restart({
+          spawnX: this.player.body.x,
+          spawnY: this.player.body.y,
+          deferCustomize: false,
+        });
       } else {
-        this.editor = new SceneEditor(this, this.obstacles, LAYOUT, { grid: 20, startPalette: "tree" });
+        // ✅ Editor still uses hardcoded LAYOUT for sandbox editing
+        this.editor = new SceneEditor(this, this.obstacles, LAYOUT, {
+          grid: 20,
+          startPalette: "tree",
+        });
         this.editor.enable();
-        this.setHint("EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save");
+        this.setHint(
+          "EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save"
+        );
       }
     });
   }
@@ -132,20 +152,38 @@ export class MailScene extends Phaser.Scene {
 
     const k = this.keys;
     this.player.updateMovement({
-      left:  !!k.cursors.left?.isDown || k.A.isDown,
+      left: !!k.cursors.left?.isDown || k.A.isDown,
       right: !!k.cursors.right?.isDown || k.D.isDown,
-      up:    !!k.cursors.up?.isDown || k.W.isDown,
-      down:  !!k.cursors.down?.isDown || k.S.isDown,
+      up: !!k.cursors.up?.isDown || k.W.isDown,
+      down: !!k.cursors.down?.isDown || k.S.isDown,
     });
 
     if (Phaser.Input.Keyboard.JustDown(k.E)) {
       const p = this.player.body;
-      const nearInbox    = Phaser.Math.Distance.Between(p.x, p.y, this.inter.inbox.x,    this.inter.inbox.y)    < 64;
-      const nearCompose  = Phaser.Math.Distance.Between(p.x, p.y, this.inter.compose.x,  this.inter.compose.y)  < 64;
-      const nearWardrobe = Phaser.Math.Distance.Between(p.x, p.y, this.inter.wardrobe.x, this.inter.wardrobe.y) < 64;
+      const nearInbox =
+        Phaser.Math.Distance.Between(
+          p.x,
+          p.y,
+          this.inter.inbox.container.x,
+          this.inter.inbox.container.y
+        ) < 64;
+      const nearCompose =
+        Phaser.Math.Distance.Between(
+          p.x,
+          p.y,
+          this.inter.compose.container.x,
+          this.inter.compose.container.y
+        ) < 64;
+      const nearWardrobe =
+        Phaser.Math.Distance.Between(
+          p.x,
+          p.y,
+          this.inter.wardrobe.container.x,
+          this.inter.wardrobe.container.y
+        ) < 64;
 
-      if (nearInbox)    this.game.events.emit("inbox:interact");
-      if (nearCompose)  this.game.events.emit("compose:interact");
+      if (nearInbox) this.game.events.emit("inbox:interact");
+      if (nearCompose) this.game.events.emit("compose:interact");
       if (nearWardrobe) this.openCustomizer();
     }
   }
@@ -161,9 +199,12 @@ export class MailScene extends Phaser.Scene {
     this.hud.anchor("hint", "top-left", 12, 12);
     return c;
   }
+
   private setHint(text: string) {
     const c = this.hud.get("hint");
-    const t = c?.list.find(o => o instanceof Phaser.GameObjects.Text) as Phaser.GameObjects.Text | undefined;
+    const t = c?.list.find(
+      (o) => o instanceof Phaser.GameObjects.Text
+    ) as Phaser.GameObjects.Text | undefined;
     t?.setText(text);
   }
 }

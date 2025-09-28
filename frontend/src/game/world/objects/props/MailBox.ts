@@ -1,12 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Mailbox extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number) {
     super(scene, obstacles, "mailbox", x, y);
 
     this.addGraphics(g => {
@@ -24,5 +22,12 @@ export class Mailbox extends BaseObject {
     }).setOrigin(0.5, 1);
 
     if (obstacles) this.addStaticBox(0, -6, 52, 80).setVisible(false);
+  }
+}
+
+export class MailboxFactory implements ObjectFactory {
+  readonly type = "mailbox";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Mailbox(scene, obstacles, item.x, item.y);
   }
 }

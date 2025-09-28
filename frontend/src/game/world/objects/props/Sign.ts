@@ -1,13 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Sign extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number,
-    text = "Welcome"
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number, text = "Welcome") {
     super(scene, obstacles, "sign", x, y);
 
     this.addGraphics(g => {
@@ -21,5 +18,12 @@ export class Sign extends BaseObject {
     });
 
     if (obstacles) this.addStaticBox(0, -8, 70, 14).setVisible(false);
+  }
+}
+
+export class SignFactory implements ObjectFactory {
+  readonly type = "sign";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Sign(scene, obstacles, item.x, item.y, "Welcome Home");
   }
 }

@@ -1,12 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Wardrobe extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number) {
     super(scene, obstacles, "wardrobe", x, y);
 
     this.addGraphics(g => {
@@ -20,5 +18,12 @@ export class Wardrobe extends BaseObject {
     }).setOrigin(0.5, 1);
 
     if (obstacles) this.addStaticBox(0, 0, 44, 80).setVisible(false);
+  }
+}
+
+export class WardrobeFactory implements ObjectFactory {
+  readonly type = "wardrobe";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Wardrobe(scene, obstacles, item.x, item.y);
   }
 }

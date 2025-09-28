@@ -1,12 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Bench extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number) {
     super(scene, obstacles, "bench", x, y);
 
     this.addGraphics(g => {
@@ -28,5 +26,12 @@ export class Bench extends BaseObject {
     }).setOrigin(0.5, 1);
 
     if (obstacles) this.addStaticBox(0, 8, 112, 24).setVisible(false);
+  }
+}
+
+export class BenchFactory implements ObjectFactory {
+  readonly type = "bench";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Bench(scene, obstacles, item.x, item.y);
   }
 }

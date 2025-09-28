@@ -1,13 +1,10 @@
 import Phaser from "phaser";
-import { BaseObject } from "../BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 export class Rocks extends BaseObject {
-  constructor(
-    scene: Phaser.Scene,
-    obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number,
-    count = 3, baseScale = 1.0, tint = 0x9e9e9e
-  ) {
+  constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number, count = 3, baseScale = 1.0, tint = 0x9e9e9e) {
     super(scene, obstacles, "rocks", x, y);
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -35,5 +32,12 @@ export class Rocks extends BaseObject {
       const cy = (minY + maxY) / 2 + 6;
       this.addStaticBox(cx, cy, cw, ch).setVisible(false);
     }
+  }
+}
+
+export class RocksFactory implements ObjectFactory {
+  readonly type = "rocks";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new Rocks(scene, obstacles, item.x, item.y, 3, 1.4, 0.4);
   }
 }

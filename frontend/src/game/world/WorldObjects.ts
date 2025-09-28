@@ -1,55 +1,45 @@
-// src/game/world/WorldObjects.ts
 import Phaser from "phaser";
-import { LAYOUT, Item } from "./layout";
-import {
-  createTree, createBush,
-  createHouse,
-  createMailbox, createBenchWithQuill, createWardrobe,
-  createRocks, createLamp, createSign,
-} from "./objects";
+import { Item } from "./layout"; // just for type safety
+import { FACTORY_MAP } from "./objects";
+import { WorldObject } from "./objects/BaseObjects"; 
 
-/** Export this so MailScene can import the type */
+/** Export this so MailScene (or Game.ts) can import the type */
 export type Interactables = {
-  compose: Phaser.GameObjects.Container;
-  inbox: Phaser.GameObjects.Container;
-  wardrobe: Phaser.GameObjects.Container;
+  compose: WorldObject;
+  inbox: WorldObject;
+  wardrobe: WorldObject;
 };
 
+/**
+ * Create all world objects from an array of items (loaded from JSON).
+ * 
+ * @param scene - Phaser scene
+ * @param obstacles - StaticGroup for colliders
+ * @param items - Array of map items (from JSON or editor export)
+ */
 export function createWorldObjects(
   scene: Phaser.Scene,
-  obstacles: Phaser.Physics.Arcade.StaticGroup
+  obstacles: Phaser.Physics.Arcade.StaticGroup,
+  items: Item[]
 ): Interactables {
-  let compose!: Phaser.GameObjects.Container;
-  let inbox!: Phaser.GameObjects.Container;
-  let wardrobe!: Phaser.GameObjects.Container;
+  let compose!: WorldObject;
+  let inbox!: WorldObject;
+  let wardrobe!: WorldObject;
 
-  const run = (it: Item) => {
-    switch (it.t) {
-      case "house":
-        return createHouse(scene, obstacles, it.x, it.y, it.w, it.h, { doorPos: it.doorPos });
-      case "tree":
-        return createTree(scene, obstacles, it.x, it.y, it.scale, it.tint);
-      case "bush":
-        return createBush(scene, obstacles, it.x, it.y, it.scale, it.tint);
-      case "rocks":
-        return createRocks(scene, obstacles, it.x, it.y, it.count, it.baseScale, it.tint);
-      case "lamp":
-        return createLamp(scene, obstacles, it.x, it.y, it.scale);
-      case "sign":
-        return createSign(scene, obstacles, it.x, it.y, it.text);
-      case "bench":
-        compose = createBenchWithQuill(scene, obstacles, it.x, it.y);
-        return compose;
-      case "mailbox":
-        inbox = createMailbox(scene, obstacles, it.x, it.y);
-        return inbox;
-      case "wardrobe":
-        wardrobe = createWardrobe(scene, obstacles, it.x, it.y);
-        return wardrobe;
+  for (const item of items) {
+    const factory = FACTORY_MAP.get(item.t);
+    if (!factory) {
+      console.warn(`No factory registered for type: ${item.t}`);
+      continue;
     }
-  };
 
-  for (const item of LAYOUT) run(item);
+    const obj = factory.create(scene, obstacles, item);
+
+    // special interactables (references kept for gameplay)
+    if (item.t === "bench") compose = obj;
+    if (item.t === "mailbox") inbox = obj;
+    if (item.t === "wardrobe") wardrobe = obj;
+  }
 
   return { compose, inbox, wardrobe };
 }

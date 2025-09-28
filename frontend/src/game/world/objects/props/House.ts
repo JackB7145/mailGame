@@ -1,5 +1,7 @@
 import Phaser from "phaser";
-import { BaseObject } from "./BaseObjects";
+import { BaseObject, WorldObject } from "../BaseObjects";
+import { ObjectFactory } from "../objectFactory";
+import { Item } from "../../layout";
 
 type DoorPos = "left" | "center" | "right";
 type Palette = {
@@ -11,8 +13,9 @@ export class House extends BaseObject {
   constructor(
     scene: Phaser.Scene,
     obstacles: Phaser.Physics.Arcade.StaticGroup,
-    x: number, y: number, w: number, h: number,
-    opts: { doorPos?: DoorPos; palette?: Palette } = {},
+    x: number, y: number,
+    w: number, h: number,
+    opts: { doorPos?: DoorPos; palette?: Palette } = {}
   ) {
     super(scene, obstacles, "house", x, y);
 
@@ -99,6 +102,13 @@ export class House extends BaseObject {
       g.fillStyle(0x262626, 0.9).fillRect(doorX - 10, doorY + doorH + stepH, doorW + 20, stepH);
     });
 
-    if (obstacles) this.addStaticBox(0, 0, w, h);
+    if (obstacles) this.addStaticBox(0, 0, w, h).setVisible(false);
+  }
+}
+
+export class HouseFactory implements ObjectFactory {
+  readonly type = "house";
+  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
+    return new House(scene, obstacles, item.x, item.y, 100, 100);
   }
 }
