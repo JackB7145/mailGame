@@ -29,6 +29,6 @@ export class Lamp extends BaseObject {
 export class LampFactory implements ObjectFactory {
   readonly type = "lamp";
   create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
-    return new Lamp(scene, obstacles, item.x, item.y, 50);
+    return new Lamp(scene, obstacles, item.x, item.y, 1.4);
   }
 }

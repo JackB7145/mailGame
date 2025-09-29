@@ -14,7 +14,7 @@ import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
 
 // editor
-import { LAYOUT, Item } from "../world/layout";
+import { Item } from "../world/layout";
 import { SceneEditor } from "../editor";
 
 type Spawn = { x: number; y: number };
@@ -40,6 +40,9 @@ export class MailScene extends Phaser.Scene {
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
   private editor?: SceneEditor;
 
+  // ✅ cache the map data once
+  private mapData: Item[] = [];
+
   constructor() {
     super(MailScene.KEY);
   }
@@ -49,7 +52,7 @@ export class MailScene extends Phaser.Scene {
       this.load.audio("bgm", ["bgm.mp3"]);
     }
 
-    // ✅ preload the JSON map (public/maps/mymap.json)
+    // load the JSON map (public/maps/mymap.json)
     this.load.json("map", "maps/mymap.json");
   }
 
@@ -68,13 +71,15 @@ export class MailScene extends Phaser.Scene {
       if (raw) this.custom = JSON.parse(raw);
     } catch {}
 
+    // ✅ store mapData once, fallback to empty array
+    this.mapData = this.cache.json.get("map") ?? [];
+
     startMusicWithUnlock(this, "bgm");
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
     this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
 
-    // ✅ Use JSON map from cache for world creation
-    const mapData: Item[] = this.cache.json.get("map");
-    this.inter = createWorldObjects(this, this.obstacles, mapData);
+    // build world once from mapData
+    this.inter = createWorldObjects(this, this.obstacles, this.mapData);
 
     const startX = this.spawnFromIntro?.x ?? 980;
     const startY = this.spawnFromIntro?.y ?? 1040;
@@ -131,11 +136,12 @@ export class MailScene extends Phaser.Scene {
           deferCustomize: false,
         });
       } else {
-        // ✅ Editor still uses hardcoded LAYOUT for sandbox editing
-        this.editor = new SceneEditor(this, this.obstacles, LAYOUT, {
+        // ✅ reuse the same mapData
+        this.editor = new SceneEditor(this, this.obstacles, this.mapData, {
           grid: 20,
           startPalette: "tree",
         });
+
         this.editor.enable();
         this.setHint(
           "EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save"

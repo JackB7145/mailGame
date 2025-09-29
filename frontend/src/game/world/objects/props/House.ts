@@ -1,3 +1,4 @@
+// src/game/world/objects/props/House.ts
 import Phaser from "phaser";
 import { BaseObject, WorldObject } from "../BaseObjects";
 import { ObjectFactory } from "../objectFactory";
@@ -18,6 +19,11 @@ export class House extends BaseObject {
     opts: { doorPos?: DoorPos; palette?: Palette } = {}
   ) {
     super(scene, obstacles, "house", x, y);
+
+    // 🔹 Normalize JSON scale to reasonable bounds
+    const scaleFactor = 0.5; // tweak this until JSON/export matches editor sizes
+    w = Math.round(w * scaleFactor);
+    h = Math.round(h * scaleFactor);
 
     const p = {
       wall: 0xA1887F, wallShade: 0x8D6E63, trim: 0x3E2723,
@@ -109,6 +115,16 @@ export class House extends BaseObject {
 export class HouseFactory implements ObjectFactory {
   readonly type = "house";
   create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
-    return new House(scene, obstacles, item.x, item.y, 100, 100);
+    const houseItem = item as Extract<Item, { t: "house" }>;
+    return new House(
+      scene,
+      obstacles,
+      houseItem.x,
+      houseItem.y,
+      houseItem.w,
+      houseItem.h,
+      { doorPos: houseItem.doorPos as DoorPos }
+    );
   }
 }
+

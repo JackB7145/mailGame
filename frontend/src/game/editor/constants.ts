@@ -3,6 +3,7 @@ import { Item } from "../world/layout";
 export const PALETTE_ORDER: Item["t"][] = [
   "tree", "bush", "rocks", "lamp",
   "house", "bench", "mailbox", "wardrobe", "sign",
+  "water", "dirt", "gravel", "planks", 
 ];
 
 export function newItemFromPalette(palette: Item["t"], x: number, y: number): Item {
@@ -16,5 +17,9 @@ export function newItemFromPalette(palette: Item["t"], x: number, y: number): It
     case "bench":    return { t: "bench", x, y };
     case "mailbox":  return { t: "mailbox", x, y };
     case "wardrobe": return { t: "wardrobe", x, y };
+    case "water":    return { t: "water", x, y, size: 64 };
+    case "dirt":     return { t: "dirt", x, y, size: 64 };
+    case "gravel":   return { t: "gravel", x, y, size: 64 };
+    case "planks":   return { t: "planks", x, y, size: 64 };
   }
 }

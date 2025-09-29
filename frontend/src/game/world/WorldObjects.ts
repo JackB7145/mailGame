@@ -1,27 +1,31 @@
+// src/game/world/WorldObjects.ts
 import Phaser from "phaser";
-import { Item } from "./layout"; // just for type safety
+import { Item } from "./layout";
 import { FACTORY_MAP } from "./objects";
-import { WorldObject } from "./objects/BaseObjects"; 
+import { WorldObject } from "./objects/BaseObjects";
 
-/** Export this so MailScene (or Game.ts) can import the type */
+// Things the game needs quick access to
 export type Interactables = {
   compose: WorldObject;
   inbox: WorldObject;
   wardrobe: WorldObject;
 };
 
-/**
- * Create all world objects from an array of items (loaded from JSON).
- * 
- * @param scene - Phaser scene
- * @param obstacles - StaticGroup for colliders
- * @param items - Array of map items (from JSON or editor export)
- */
-export function createWorldObjects(
+// Full build handle (used by editor + rebuild)
+export type BuildHandles = {
+  root: Phaser.GameObjects.Container;
+  objects: WorldObject[];
+  interactables: Interactables;
+};
+
+export function buildFromItems(
   scene: Phaser.Scene,
   obstacles: Phaser.Physics.Arcade.StaticGroup,
   items: Item[]
-): Interactables {
+): BuildHandles {
+  const root = scene.add.container(0, 0);
+  const objects: WorldObject[] = [];
+
   let compose!: WorldObject;
   let inbox!: WorldObject;
   let wardrobe!: WorldObject;
@@ -34,12 +38,22 @@ export function createWorldObjects(
     }
 
     const obj = factory.create(scene, obstacles, item);
+    root.add(obj.container);
+    objects.push(obj);
 
-    // special interactables (references kept for gameplay)
     if (item.t === "bench") compose = obj;
     if (item.t === "mailbox") inbox = obj;
     if (item.t === "wardrobe") wardrobe = obj;
   }
 
-  return { compose, inbox, wardrobe };
+  return { root, objects, interactables: { compose, inbox, wardrobe } };
+}
+
+// Wrapper for MailScene (only cares about interactables)
+export function createWorldObjects(
+  scene: Phaser.Scene,
+  obstacles: Phaser.Physics.Arcade.StaticGroup,
+  items: Item[]
+): Interactables {
+  return buildFromItems(scene, obstacles, items).interactables;
 }
