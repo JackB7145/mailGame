@@ -14,6 +14,7 @@ import { WaterFactory } from "./props/Water";
 import { DirtFactory } from "./props/Dirt";
 import { GravelFactory } from "./props/Gravel";
 import { PlanksFactory } from "./props/Planks";
+import { ColliderBoxFactory } from "./props/ColliderBox"; // 👈 new import
 
 // Build the global registry of object factories
 export const FACTORY_MAP: Map<string, ObjectFactory> = new Map();
@@ -32,8 +33,8 @@ export const FACTORY_MAP: Map<string, ObjectFactory> = new Map();
   new DirtFactory(),
   new GravelFactory(),
   new PlanksFactory(),
+  new ColliderBoxFactory(), // 👈 register collider
 ].forEach(factory => FACTORY_MAP.set(factory.type, factory));
-
 
 // Re-export base + types so everything can import from this barrel
 export * from "./BaseObjects";
@@ -46,3 +47,8 @@ export * from "./props/Rocks";
 export * from "./props/Sign";
 export * from "./props/Tree";
 export * from "./props/Wardrobe";
+export * from "./props/Water";
+export * from "./props/Dirt";
+export * from "./props/Gravel";
+export * from "./props/Planks";
+export * from "./props/ColliderBox"; // 👈 re-export collider

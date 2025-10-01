@@ -24,8 +24,6 @@ export class Bench extends BaseObject {
     this.addText(0, -36, "Compose", {
       color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "12px",
     }).setOrigin(0.5, 1);
-
-    if (obstacles) this.addStaticBox(0, 8, 112, 24).setVisible(false);
   }
 }
 

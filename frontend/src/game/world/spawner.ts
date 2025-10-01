@@ -10,6 +10,7 @@ import {
   Mailbox,
   Wardrobe,
   Sign,
+  ColliderBox, // 👈 new import
 } from "./objects";
 
 export type BuildHandles = {
@@ -31,7 +32,9 @@ export function buildFromItems(
   const interact: BuildHandles["interactables"] = {};
   const objects: Array<{ destroy: () => void }> = [];
 
-  const add = (obj?: { container: Phaser.GameObjects.Container; destroy: () => void }) => {
+  const add = (
+    obj?: { container: Phaser.GameObjects.Container; destroy: () => void }
+  ) => {
     if (!obj) return;
     root.add(obj.container);
     objects.push(obj);
@@ -40,13 +43,27 @@ export function buildFromItems(
   for (const it of items) {
     switch (it.t) {
       case "house":
-        add(new House(scene, obstacles, it.x, it.y, it.w, it.h, { doorPos: it.doorPos }));
+        add(
+          new House(scene, obstacles, it.x, it.y, it.w, it.h, {
+            doorPos: it.doorPos,
+          })
+        );
         break;
       case "tree":
         add(new Tree(scene, obstacles, it.x, it.y, it.scale, it.tint));
         break;
       case "rocks":
-        add(new Rocks(scene, obstacles, it.x, it.y, it.count, it.baseScale, it.tint));
+        add(
+          new Rocks(
+            scene,
+            obstacles,
+            it.x,
+            it.y,
+            it.count,
+            it.baseScale,
+            it.tint
+          )
+        );
         break;
       case "lamp":
         add(new Lamp(scene, obstacles, it.x, it.y, it.scale));
@@ -70,6 +87,10 @@ export function buildFromItems(
         const o = new Wardrobe(scene, obstacles, it.x, it.y);
         add(o);
         interact.wardrobe = o.container;
+        break;
+      }
+      case "collider": {
+        add(new ColliderBox(scene, obstacles, it.x, it.y, it.w, it.h));
         break;
       }
     }

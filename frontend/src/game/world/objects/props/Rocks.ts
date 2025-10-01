@@ -24,20 +24,12 @@ export class Rocks extends BaseObject {
       minX = Math.min(minX, dx - r); maxX = Math.max(maxX, dx + r);
       minY = Math.min(minY, dy - r); maxY = Math.max(maxY, dy + r);
     }
-
-    if (obstacles) {
-      const cw = Math.max(8, maxX - minX);
-      const ch = Math.max(6, maxY - minY) * 0.6;
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2 + 6;
-      this.addStaticBox(cx, cy, cw, ch).setVisible(false);
-    }
   }
 }
 
 export class RocksFactory implements ObjectFactory {
   readonly type = "rocks";
   create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
-    return new Rocks(scene, obstacles, item.x, item.y, 3, 1.4, 0.4);
+    return new Rocks(scene, obstacles, item.x, item.y, 3, 1.4);
   }
 }

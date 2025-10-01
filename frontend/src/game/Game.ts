@@ -24,7 +24,7 @@ export function startGame(parent: string | HTMLElement) {
       disableWebAudio: false,
       noAudio: false,
     },
-    scene: [IntroScene, MailScene],
+    scene: [IntroScene, MailScene]
   };
 
   // eslint-disable-next-line no-new

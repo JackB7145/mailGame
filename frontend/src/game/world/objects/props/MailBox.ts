@@ -21,7 +21,6 @@ export class Mailbox extends BaseObject {
       color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "12px",
     }).setOrigin(0.5, 1);
 
-    if (obstacles) this.addStaticBox(0, -6, 52, 80).setVisible(false);
   }
 }
 

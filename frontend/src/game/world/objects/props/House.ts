@@ -44,24 +44,38 @@ export class House extends BaseObject {
       g.fillEllipse(0, h / 2 + shH * 0.4, sw, shH);
     });
 
-    // roof
     this.addGraphics(g => {
-      g.fillStyle(p.roof, 1).lineStyle(2, p.roofTrim, 0.9);
+      g.fillStyle(p.roof, 1);
+      g.lineStyle(2, p.roofTrim, 0.9);
+
       const apexX = 0, apexY = bodyY - roofH;
       const leftX = bodyX - over, rightX = bodyX + w + over, eaveY = bodyY;
       g.beginPath();
-      g.moveTo(apexX, apexY); g.lineTo(rightX, eaveY); g.lineTo(leftX, eaveY); g.closePath();
-      g.fillPath(); g.strokePath();
-      g.lineStyle(3, p.trim, 0.8);
-      g.beginPath(); g.moveTo(leftX, eaveY); g.lineTo(rightX, eaveY); g.strokePath();
+      g.moveTo(apexX, apexY);
+      g.lineTo(rightX, eaveY);
+      g.lineTo(leftX, eaveY);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
 
+      // eave line
+      g.lineStyle(3, p.trim, 0.8);
+      g.beginPath();
+      g.moveTo(leftX, eaveY);
+      g.lineTo(rightX, eaveY);
+      g.strokePath();
+
+      // chimney
       const chimW = Math.max(10, Math.round(w * 0.12));
       const chimH = Math.max(16, Math.round(roofH * 0.55));
       const chimX = Math.round(w * 0.22);
       const chimTop = apexY + Math.round(roofH * 0.25);
-      g.fillStyle(p.roof * 0.95, 1);
+
+      g.fillStyle(0x888888, 1); // solid medium grey
       g.fillRect(chimX, chimTop, chimW, chimH);
-      g.lineStyle(2, p.roofTrim, 0.9).strokeRect(chimX, chimTop, chimW, chimH);
+
+      g.lineStyle(2, p.roofTrim, 0.9);
+      g.strokeRect(chimX, chimTop, chimW, chimH);
     });
 
     // walls + shade
@@ -108,7 +122,6 @@ export class House extends BaseObject {
       g.fillStyle(0x262626, 0.9).fillRect(doorX - 10, doorY + doorH + stepH, doorW + 20, stepH);
     });
 
-    if (obstacles) this.addStaticBox(0, 0, w, h).setVisible(false);
   }
 }
 

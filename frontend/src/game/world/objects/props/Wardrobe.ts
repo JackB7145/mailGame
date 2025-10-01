@@ -17,7 +17,6 @@ export class Wardrobe extends BaseObject {
       color: "#ffffff", fontFamily: "Courier New, monospace", fontSize: "12px",
     }).setOrigin(0.5, 1);
 
-    if (obstacles) this.addStaticBox(0, 0, 44, 80).setVisible(false);
   }
 }
 

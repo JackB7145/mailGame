@@ -19,10 +19,6 @@ export class Lamp extends BaseObject {
       g.lineStyle(1, 0x000000, 0.4).strokeRoundedRect(-headW / 2, -postH - headH / 2, headW, headH, 3);
       g.fillStyle(0xfff59d, 0.12).fillCircle(0, -postH + 2, glowR);
     });
-
-    if (obstacles) {
-      this.addStaticBox(0, -postH / 2 + 14, postW + 4, Math.round(postH * 0.6)).setVisible(false);
-    }
   }
 }
 

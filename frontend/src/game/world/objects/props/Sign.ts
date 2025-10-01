@@ -9,15 +9,19 @@ export class Sign extends BaseObject {
 
     this.addGraphics(g => {
       g.fillStyle(0x6d4c41, 1).fillRect(-3, -24, 6, 28);
-      g.fillStyle(0x8d6e63, 1).fillRoundedRect(-40, -40, 80, 24, 4);
-      g.lineStyle(1, 0x3e2723, 0.8).strokeRoundedRect(-40, -40, 80, 24, 4);
+      const signW = 125; // wider
+      const signH = 45;  // taller
+      const signX = -signW / 2;
+      const signY = -signH - 16; // raise it above the post
+
+      g.fillStyle(0x8d6e63, 1).fillRoundedRect(signX, signY, signW, signH, 6);
+      g.lineStyle(2, 0x3e2723, 0.9).strokeRoundedRect(signX, signY, signW, signH, 6);
+
     });
 
     this.addText(0, -38, text, {
       color: "#3e2723", fontFamily: "Courier New, monospace", fontSize: "12px",
     });
-
-    if (obstacles) this.addStaticBox(0, -8, 70, 14).setVisible(false);
   }
 }
 

@@ -1,9 +1,6 @@
-// src/game/world/layout.ts
-
 export type Item =
   | { t: "house"; x: number; y: number; w: number; h: number; doorPos?: "left"|"center"|"right" }
   | { t: "tree"; x: number; y: number; scale?: number; tint?: number }
-  | { t: "bush"; x: number; y: number; scale?: number; tint?: number }
   | { t: "rocks"; x: number; y: number; count?: number; baseScale?: number; tint?: number }
   | { t: "lamp"; x: number; y: number; scale?: number }
   | { t: "sign"; x: number; y: number; text?: string }
@@ -14,7 +11,9 @@ export type Item =
   | { t: "water"; x: number; y: number; size?: number }
   | { t: "dirt"; x: number; y: number; size?: number }
   | { t: "gravel"; x: number; y: number; size?: number }
-  | { t: "planks"; x: number; y: number; size?: number };
+  | { t: "planks"; x: number; y: number; size?: number }
+  // ✅ NEW COLLIDER
+  | { t: "collider"; x: number; y: number; w: number; h: number };
 
 //
 // Design notes

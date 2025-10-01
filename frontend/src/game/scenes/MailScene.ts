@@ -9,13 +9,14 @@ import { Customizer, Customization } from "../ui/Customizer";
 import { startMusicWithUnlock } from "../systems/MusicStarter";
 import { createWorldLayers } from "../world/WorldLayers";
 import { createPhysicsWorld } from "../world/WorldPhysics";
-import { createWorldObjects, Interactables } from "../world/WorldObjects";
+import { buildFromItems, BuildHandles } from "../world/WorldObjects";
 import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
 
 // editor
 import { Item } from "../world/layout";
 import { SceneEditor } from "../editor";
+import { ColliderBox } from "../world/objects";
 
 type Spawn = { x: number; y: number };
 
@@ -31,7 +32,6 @@ export class MailScene extends Phaser.Scene {
   private keys!: Keys;
   private player!: PlayerController;
   private hud!: Hud;
-  private inter!: Interactables;
 
   private customizing = false;
   private custom: Customization = { color: 0x00ff6a, accessory: "none" };
@@ -40,7 +40,10 @@ export class MailScene extends Phaser.Scene {
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
   private editor?: SceneEditor;
 
-  // ✅ cache the map data once
+  // ✅ store full build (root, objects, interactables)
+  private build!: BuildHandles;
+
+  // cache the map data once
   private mapData: Item[] = [];
 
   constructor() {
@@ -71,15 +74,15 @@ export class MailScene extends Phaser.Scene {
       if (raw) this.custom = JSON.parse(raw);
     } catch {}
 
-    // ✅ store mapData once, fallback to empty array
     this.mapData = this.cache.json.get("map") ?? [];
 
     startMusicWithUnlock(this, "bgm");
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
     this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
 
-    // build world once from mapData
-    this.inter = createWorldObjects(this, this.obstacles, this.mapData);
+    // ✅ build world from mapData (root + objects + interactables)
+    this.build = buildFromItems(this, this.obstacles, this.mapData);
+    this.add.existing(this.build.root);
 
     const startX = this.spawnFromIntro?.x ?? 980;
     const startY = this.spawnFromIntro?.y ?? 1040;
@@ -130,22 +133,36 @@ export class MailScene extends Phaser.Scene {
       if (this.editor) {
         this.editor.disable();
         this.editor = undefined;
+
+        // Hide collider debug boxes
+        this.build.objects.forEach((obj: any) => {
+          if (typeof obj.setDebugVisible === "function") {
+            obj.setDebugVisible(false);
+          }
+        });
+
         this.scene.restart({
           spawnX: this.player.body.x,
           spawnY: this.player.body.y,
           deferCustomize: false,
         });
       } else {
-        // ✅ reuse the same mapData
         this.editor = new SceneEditor(this, this.obstacles, this.mapData, {
           grid: 20,
           startPalette: "tree",
         });
-
         this.editor.enable();
+
         this.setHint(
           "EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save"
         );
+
+        // Show collider debug boxes
+        this.build.objects.forEach((obj: any) => {
+          if (typeof obj.setDebugVisible === "function") {
+            obj.setDebugVisible(true);
+          }
+        });
       }
     });
   }
@@ -170,22 +187,22 @@ export class MailScene extends Phaser.Scene {
         Phaser.Math.Distance.Between(
           p.x,
           p.y,
-          this.inter.inbox.container.x,
-          this.inter.inbox.container.y
+          this.build.interactables.inbox.container.x,
+          this.build.interactables.inbox.container.y
         ) < 64;
       const nearCompose =
         Phaser.Math.Distance.Between(
           p.x,
           p.y,
-          this.inter.compose.container.x,
-          this.inter.compose.container.y
+          this.build.interactables.compose.container.x,
+          this.build.interactables.compose.container.y
         ) < 64;
       const nearWardrobe =
         Phaser.Math.Distance.Between(
           p.x,
           p.y,
-          this.inter.wardrobe.container.x,
-          this.inter.wardrobe.container.y
+          this.build.interactables.wardrobe.container.x,
+          this.build.interactables.wardrobe.container.y
         ) < 64;
 
       if (nearInbox) this.game.events.emit("inbox:interact");

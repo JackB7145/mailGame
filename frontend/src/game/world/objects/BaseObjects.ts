@@ -105,8 +105,14 @@ export abstract class BaseObject implements WorldObject {
   }
 
   destroy() {
-    this.staticBodies.forEach((b) => b.destroy());
+    this.staticBodies.forEach((b) => {
+      // Remove from the physics group AND destroy the game object
+      this.obstacles.remove(b, true, true);
+    });
     this.staticBodies = [];
+
+    // Destroy the container and all children (graphics, text, etc.)
     this.container.destroy(true);
   }
+
 }
