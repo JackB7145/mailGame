@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { BaseObject, WorldObject } from "../BaseObjects";
 import { ObjectFactory } from "../objectFactory";
 import { Item } from "../../layout";
+import { sign } from "crypto";
 
 export class Sign extends BaseObject {
   constructor(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, x: number, y: number, text = "Welcome") {
@@ -25,9 +26,21 @@ export class Sign extends BaseObject {
   }
 }
 
+// Assuming Item has: { t: "sign"; x: number; y: number; text?: string }
+
 export class SignFactory implements ObjectFactory {
   readonly type = "sign";
-  create(scene: Phaser.Scene, obstacles: Phaser.Physics.Arcade.StaticGroup, item: Item): WorldObject {
-    return new Sign(scene, obstacles, item.x, item.y, "Welcome Home");
+
+  create(
+    scene: Phaser.Scene,
+    obstacles: Phaser.Physics.Arcade.StaticGroup,
+    item: Item
+  ): WorldObject {
+    // Narrow to the sign shape
+    const signItem = item as Extract<Item, { t: "sign"; text?: string }>;
+
+    // Use map-provided text when present; otherwise default
+    console.log(signItem.text)
+    return new Sign(scene, obstacles, signItem.x, signItem.y, signItem.text ?? "Welcome Home");
   }
 }
