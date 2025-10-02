@@ -16,7 +16,7 @@ export class PlayerController {
 
     // physics body
     this.body = scene.physics.add.image(startX, startY, "").setDepth(startY);
-    this.body.setCircle(10).setOffset(-10, -10).setSize(20, 20);
+    this.body.setCircle(10).setOffset(-10, -10).setSize(20, 20).setVisible(false);
     this.body.setCollideWorldBounds(true);
 
     // visuals

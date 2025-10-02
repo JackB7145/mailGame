@@ -50,12 +50,6 @@ export function addWorldFence(
   const top = 820;
   const bottom = H - 120;
 
-  // Optional visual outline (can remove if you only want colliders)
-  const fence = scene.add.graphics();
-  fence.lineStyle(4, 0x3e2723, 1);
-  fence.strokeRect(left, top, right - left, bottom - top);
-  fence.setDepth(top);
-
   // Colliders (thin static boxes just outside the visual rectangle)
   createStaticBox(scene, obstacles, (left + right) / 2, top - 4, right - left, 8).setVisible(false);
   createStaticBox(scene, obstacles, (left + right) / 2, bottom + 4, right - left, 8).setVisible(false);

@@ -1,6 +1,6 @@
 import { auth } from "./firebase";
 
-const API_BASE = "https://mailgamebackend-jackb7145-jack-branstons-projects.vercel.app/";
+const API_BASE = "http://127.0.0.1:8000";
 
 async function getToken(): Promise<string> {
   const token = await auth.currentUser?.getIdToken();

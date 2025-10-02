@@ -12,7 +12,6 @@ if not firebase_admin._apps:
         raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS .env is required")
     firebase_admin.initialize_app(credentials.Certificate(cred_path))
 
-
 db = firestore.client()
 
 async def verify_bearer(authorization: str | None = Header(default=None)) -> str:

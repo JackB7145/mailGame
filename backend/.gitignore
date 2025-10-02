@@ -1,4 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
 .env
-serviceAccount.json
-.venv
-.vercel
+
+# Firebase keys
+ServiceAccount.json
+
+# VS Code
+.vscode/
