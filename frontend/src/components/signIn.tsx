@@ -8,6 +8,20 @@ interface Props {
   onSuccess: () => void;
 }
 
+const AUTH_KEY = "mailme:auth";
+const AUTH_TTL_MS = 60 * 60 * 1000; // 60 minutes
+
+function setAuthToken() {
+  try {
+    const token = {
+      v: Math.random().toString(36).slice(2) + Date.now().toString(36),
+      t: Date.now(), // issuedAt
+      ttl: AUTH_TTL_MS
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(token));
+  } catch { /* ignore */ }
+}
+
 export default function SignIn({ onSuccess }: Props) {
   // gate
   const [unlocked, setUnlocked] = useState(false);
@@ -68,9 +82,6 @@ export default function SignIn({ onSuccess }: Props) {
   }, []);
 
   // Submit name:
-  //  - echo first ("> name")
-  //  - if valid: play success, show Access Granted, hide/clear prompt immediately, then onSuccess
-  //  - if invalid: play fail, show error, hide prompt for ~2s, then show again cleared for retry
   const handleSubmitName = useCallback(
     (name: string) => {
       // Echo the typed command first
@@ -80,24 +91,21 @@ export default function SignIn({ onSuccess }: Props) {
 
       if (isAllowed) {
         setPostLines((prev) => [...prev, `Access Granted. Welcome, ${name}!`]);
-        setShowPrompt(false);   // hide prompt so input isn't visible
-        setPromptValue("");     // clear
-        // success sound
+        setShowPrompt(false);
+        setPromptValue("");
         try { successSfx.current?.play().catch(() => {}); } catch {}
+
+        // >>> persist 60-min auth token before transitioning
+        setAuthToken();
 
         // transition shortly after
         setTimeout(onSuccess, 900);
       } else {
         setPostLines((prev) => [...prev, "User not recognized. Try again."]);
-        // fail sound
         try { failSfx.current?.play().catch(() => {}); } catch {}
-
-        // hide prompt briefly, then re-show cleared for retry
         setShowPrompt(false);
         setPromptValue("");
-        setTimeout(() => {
-          setShowPrompt(true);
-        }, 2000); // ~2 seconds
+        setTimeout(() => setShowPrompt(true), 2000);
       }
     },
     [onSuccess]

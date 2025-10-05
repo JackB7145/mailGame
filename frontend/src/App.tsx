@@ -11,8 +11,23 @@ import SignIn from "./components/signIn";
 import { sendMailViaBackend } from "./lib/api";
 import "./global.css";
 
-const WIDTH = screen.width*0.95;
-const HEIGHT = screen.height*0.95;
+const WIDTH = screen.width * 0.95;
+const HEIGHT = screen.height * 0.95;
+
+const AUTH_KEY = "mailme:auth";
+
+function isAuthValid(): boolean {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { v: string; t: number; ttl?: number };
+    if (!parsed?.t) return false;
+    const ttl = typeof parsed.ttl === "number" ? parsed.ttl : 60 * 60 * 1000; // fallback 60m
+    return Date.now() - parsed.t < ttl;
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -21,7 +36,22 @@ export default function App() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [outboxOpen, setOutboxOpen] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+
+  // initialize signedIn based on localStorage token
+  const [signedIn, setSignedIn] = useState<boolean>(() => isAuthValid());
+
+  // Optional: watchdog that expires session in-tab if user sits longer than TTL
+  useEffect(() => {
+    if (!signedIn) return;
+    const id = setInterval(() => {
+      if (!isAuthValid()) {
+        // simple in-tab expire → reload to bounce back to SignIn
+        // (or do setSignedIn(false) if you want a soft-kick)
+        window.location.reload();
+      }
+    }, 30 * 1000); // check every 30s
+    return () => clearInterval(id);
+  }, [signedIn]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -54,7 +84,7 @@ export default function App() {
         width: WIDTH,
         height: HEIGHT,
         backgroundColor: "#101014",
-        scene: [IntroScene, MailScene], // 👈 start with intro, then jumps to mail
+        scene: [IntroScene, MailScene],
         physics: { default: "arcade" },
         scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
       });
@@ -76,11 +106,24 @@ export default function App() {
     });
   }
 
-  if (!signedIn) return <SignIn onSuccess={() => setSignedIn(true)} />;
+  if (!signedIn) {
+    return <SignIn onSuccess={() => setSignedIn(true)} />;
+  }
 
   return (
     <div style={{ display: "grid", alignItems: "center", justifyContent: "center", maxWidth: "100%" }}>
-      <div id="game" style={{ display: "flex", justifyContent: "center", alignItems:"center", border: "1px solid #333", width: WIDTH, height: HEIGHT, maxWidth: "100%" }} />
+      <div
+        id="game"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          border: "1px solid #333",
+          width: WIDTH,
+          height: HEIGHT,
+          maxWidth: "100%",
+        }}
+      />
       <ComposeModal
         open={composeOpen}
         meUid={uid ?? ""}

@@ -12,8 +12,6 @@ import { createPhysicsWorld } from "../world/WorldPhysics";
 import { buildFromItems, BuildHandles } from "../world/WorldObjects";
 import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
-
-// keep Item type for map loading
 import { Item } from "../world/layout";
 
 type Spawn = { x: number; y: number };
@@ -25,7 +23,6 @@ export class MailScene extends Phaser.Scene {
   private readonly WORLD_H = 2200;
 
   private spawnFromIntro: Spawn | null = null;
-  private deferCustomize = false;
 
   private keys!: Keys;
   private player!: PlayerController;
@@ -37,28 +34,23 @@ export class MailScene extends Phaser.Scene {
 
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
   private build!: BuildHandles;
-
-  // cache the map data once
   private mapData: Item[] = [];
 
-  constructor() {
-    super(MailScene.KEY);
-  }
+  // Pause overlay
+  private pauseRoot!: Phaser.GameObjects.Container;
+  private pauseVisible = false;
+
+  constructor() { super(MailScene.KEY); }
 
   preload() {
-    if (!this.cache.audio.exists("bgm")) {
-      this.load.audio("bgm", ["bgm.mp3"]);
-    }
-
-    // load the JSON map (public/maps/mymap.json)
+    if (!this.cache.audio.exists("bgm")) this.load.audio("bgm", ["bgm.mp3"]);
     this.load.json("map", "maps/mymap.json");
   }
 
-  init(data: { spawnX?: number; spawnY?: number; deferCustomize?: boolean }) {
+  init(data: { spawnX?: number; spawnY?: number }) {
     if (typeof data?.spawnX === "number" && typeof data?.spawnY === "number") {
       this.spawnFromIntro = { x: data.spawnX, y: data.spawnY };
     }
-    this.deferCustomize = !!data?.deferCustomize;
   }
 
   create() {
@@ -75,7 +67,6 @@ export class MailScene extends Phaser.Scene {
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
     this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
 
-    // build world from mapData (root + objects + interactables)
     this.build = buildFromItems(this, this.obstacles, this.mapData);
     this.add.existing(this.build.root);
 
@@ -88,44 +79,43 @@ export class MailScene extends Phaser.Scene {
     this.keys = createInput(this);
 
     this.hud = new Hud(this);
-    this.addHint(this.deferCustomize ? "…" : "Customize your courier…");
+    this.addHint("WASD/Arrows to move, E interact, F settings.");
 
-    const fsBtn = createFullscreenButton(this, { width: 36, height: 28 });
-    this.hud.add("fullscreen", fsBtn);
-    this.hud.anchor("fullscreen", "top-right", 24, 24);
-
-    const vol = createVolumeSlider(this, { width: 140, height: 8, label: "Vol" });
-    const fsW = Math.round(fsBtn.getBounds().width);
-    this.hud.add("volume", vol);
-    this.hud.anchor("volume", "top-right", 24 + fsW + 8, 24);
+    // DO NOT add fullscreen/volume to HUD anymore (to avoid duplication)
 
     this.customizer = new Customizer(this, {
       initial: this.custom,
       onChange: (c) => {
         this.custom = c;
         this.player.setCustomization(c);
-        try {
-          localStorage.setItem("courier:custom", JSON.stringify(c));
-        } catch {}
+        try { localStorage.setItem("courier:custom", JSON.stringify(c)); } catch {}
       },
       onFinish: () => {
         this.customizing = false;
-        this.setHint("Arrows/WASD to move, E to interact.");
+        this.setHint("WASD/Arrows to move, E interact, F settings.");
       },
     });
 
-    if (this.deferCustomize) {
-      this.customizing = true;
-      this.customizer.close();
-      this.game.events.once("ui:open-customizer", () => this.openCustomizer());
-    } else {
-      this.customizing = true;
-      this.customizer.open();
-    }
+    // Start fully closed
+    this.customizer.close();
+    this.customizing = false;
+
+    // Pause/settings overlay (shows FS + Volume)
+    this.buildPauseOverlay();
+
+    // Toggle with "F" (not ESC). If customizer is open, ignore.
+    this.input.keyboard?.on("keydown-F", () => {
+      if (this.customizer?.isOpen?.()) return;
+      this.togglePauseOverlay();
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.removeAllListeners("keydown-F");
+    });
   }
 
   update() {
-    if (this.customizing) {
+    if (this.customizing || this.pauseVisible) {
       this.player.body.setVelocity(0, 0);
       return;
     }
@@ -142,22 +132,19 @@ export class MailScene extends Phaser.Scene {
       const p = this.player.body;
       const nearInbox =
         Phaser.Math.Distance.Between(
-          p.x,
-          p.y,
+          p.x, p.y,
           this.build.interactables.inbox.container.x,
           this.build.interactables.inbox.container.y
         ) < 64;
       const nearCompose =
         Phaser.Math.Distance.Between(
-          p.x,
-          p.y,
+          p.x, p.y,
           this.build.interactables.compose.container.x,
           this.build.interactables.compose.container.y
         ) < 64;
       const nearWardrobe =
         Phaser.Math.Distance.Between(
-          p.x,
-          p.y,
+          p.x, p.y,
           this.build.interactables.wardrobe.container.x,
           this.build.interactables.wardrobe.container.y
         ) < 64;
@@ -186,5 +173,69 @@ export class MailScene extends Phaser.Scene {
       (o) => o instanceof Phaser.GameObjects.Text
     ) as Phaser.GameObjects.Text | undefined;
     t?.setText(text);
+  }
+
+  // ----------------- Pause Overlay (inline) -----------------
+  private buildPauseOverlay() {
+    const DIALOG_W = 360;
+    const DIALOG_H = 160;
+
+    const root = this.add.container(0, 0)
+      .setScrollFactor(0)
+      .setDepth(11000)
+      .setVisible(false);
+    this.pauseRoot = root;
+
+    // dimmer blocks clicks
+    const dim = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.5)
+      .setOrigin(0)
+      .setInteractive();
+    root.add(dim);
+
+    // panel
+    const panel = this.add
+      .rectangle(this.scale.width / 2, this.scale.height / 2, DIALOG_W, DIALOG_H, 0x0a0a0a, 1)
+      .setStrokeStyle(2, 0xffffff, 0.2)
+      .setInteractive();
+    root.add(panel);
+
+    const title = this.add
+      .text(panel.x, panel.y - DIALOG_H / 2 + 18, "Settings", {
+        color: "#ffffff",
+        fontFamily: "Courier New, monospace",
+        fontSize: "16px",
+      })
+      .setOrigin(0.5);
+    root.add(title);
+
+    // widgets (ONLY shown in overlay)
+    const fsBtn = createFullscreenButton(this, { width: 36, height: 28 });
+    const vol   = createVolumeSlider(this, { width: 180, height: 8, label: "Vol" });
+
+    fsBtn.setPosition(panel.x - 120, panel.y + 20);
+    vol.setPosition(panel.x - 60, panel.y + 20);
+
+    root.add(fsBtn);
+    root.add(vol);
+
+    const onResize = () => {
+      dim.setSize(this.scale.width, this.scale.height);
+      panel.setPosition(this.scale.width / 2, this.scale.height / 2);
+      title.setPosition(panel.x, panel.y - DIALOG_H / 2 + 18);
+      fsBtn.setPosition(panel.x - 120, panel.y + 20);
+      vol.setPosition(panel.x - 60, panel.y + 20);
+    };
+    this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, onResize);
+      root.destroy(true);
+    });
+  }
+
+  private togglePauseOverlay() {
+    this.pauseVisible = !this.pauseVisible;
+    this.pauseRoot.setVisible(this.pauseVisible);
+    this.physics.world.isPaused = this.pauseVisible;
   }
 }
