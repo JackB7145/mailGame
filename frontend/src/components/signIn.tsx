@@ -37,7 +37,7 @@ export default function SignIn({ onSuccess }: Props) {
   const bootLines = [
     "Initializing system...",
     "Loading authentication module...",
-    "Welcome to MailGameOS Editor",
+    "Welcome to MailMe.io",
     "Please enter your name:",
   ];
 

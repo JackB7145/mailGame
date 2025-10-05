@@ -13,10 +13,8 @@ import { buildFromItems, BuildHandles } from "../world/WorldObjects";
 import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
 
-// editor
+// keep Item type for map loading
 import { Item } from "../world/layout";
-import { SceneEditor } from "../editor";
-import { ColliderBox } from "../world/objects";
 
 type Spawn = { x: number; y: number };
 
@@ -38,9 +36,6 @@ export class MailScene extends Phaser.Scene {
   private customizer!: Customizer;
 
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
-  private editor?: SceneEditor;
-
-  // ✅ store full build (root, objects, interactables)
   private build!: BuildHandles;
 
   // cache the map data once
@@ -80,7 +75,7 @@ export class MailScene extends Phaser.Scene {
     createWorldLayers(this, this.WORLD_W, this.WORLD_H);
     this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
 
-    // ✅ build world from mapData (root + objects + interactables)
+    // build world from mapData (root + objects + interactables)
     this.build = buildFromItems(this, this.obstacles, this.mapData);
     this.add.existing(this.build.root);
 
@@ -127,48 +122,10 @@ export class MailScene extends Phaser.Scene {
       this.customizing = true;
       this.customizer.open();
     }
-
-    // F10 toggles the editor
-    this.input.keyboard?.on("keydown-F10", () => {
-      if (this.editor) {
-        this.editor.disable();
-        this.editor = undefined;
-
-        // Hide collider debug boxes
-        this.build.objects.forEach((obj: any) => {
-          if (typeof obj.setDebugVisible === "function") {
-            obj.setDebugVisible(false);
-          }
-        });
-
-        this.scene.restart({
-          spawnX: this.player.body.x,
-          spawnY: this.player.body.y,
-          deferCustomize: false,
-        });
-      } else {
-        this.editor = new SceneEditor(this, this.obstacles, this.mapData, {
-          grid: 20,
-          startPalette: "tree",
-        });
-        this.editor.enable();
-
-        this.setHint(
-          "EDIT MODE — E+LMB select/move, LMB place, RMB delete, G/H tools, Ctrl+S save"
-        );
-
-        // Show collider debug boxes
-        this.build.objects.forEach((obj: any) => {
-          if (typeof obj.setDebugVisible === "function") {
-            obj.setDebugVisible(true);
-          }
-        });
-      }
-    });
   }
 
   update() {
-    if (this.customizing || this.editor) {
+    if (this.customizing) {
       this.player.body.setVelocity(0, 0);
       return;
     }
