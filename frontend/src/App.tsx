@@ -2,14 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import { IntroScene } from "./game/scenes/IntroScene";
 import { MailScene } from "./game/scenes/MailScene";
-import { ensureAnonAuth, db } from "./lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { ensureAnonAuth } from "./lib/firebase"; // keep for auth only
 import ComposeModal from "./components/ComposeModal";
 import InboxModal from "./components/InboxModal";
 import OutboxModal from "./components/OutboxModal";
 import SignIn from "./components/signIn";
 import { sendMailViaBackend } from "./lib/api";
 import "./global.css";
+
+// ⬇️ bring in session boot helpers
+import { primeAccentFromCache, loadCustomization } from './game/state/session';
+
+// ⬇️ run this immediately at module load (sync), before React renders anything
+primeAccentFromCache();
 
 const WIDTH = screen.width * 0.95;
 const HEIGHT = screen.height * 0.95;
@@ -40,16 +45,20 @@ export default function App() {
   // initialize signedIn based on localStorage token
   const [signedIn, setSignedIn] = useState<boolean>(() => isAuthValid());
 
+  // ⬇️ on first mount, hydrate customization (color/hat/position) from backend.
+  // safe if not signed in: loadCustomization() no-ops without an active user.
+  useEffect(() => {
+    loadCustomization().catch(() => {});
+  }, []);
+
   // Optional: watchdog that expires session in-tab if user sits longer than TTL
   useEffect(() => {
     if (!signedIn) return;
     const id = setInterval(() => {
       if (!isAuthValid()) {
-        // simple in-tab expire → reload to bounce back to SignIn
-        // (or do setSignedIn(false) if you want a soft-kick)
         window.location.reload();
       }
-    }, 30 * 1000); // check every 30s
+    }, 30 * 1000);
     return () => clearInterval(id);
   }, [signedIn]);
 
@@ -57,26 +66,12 @@ export default function App() {
     if (!signedIn) return;
 
     (async () => {
+      // Only auth (anonymous). No Firestore user doc creation.
       const u = await ensureAnonAuth();
       setUid(u);
       setToUid(u);
 
-      const uref = doc(db, "users", u);
-      const snap = await getDoc(uref);
-      if (!snap.exists()) {
-        await setDoc(uref, {
-          displayName: `Player-${u.slice(0, 6)}`,
-          address: {
-            name: "Test User",
-            line1: "123 Test St",
-            city: "Toronto",
-            region: "ON",
-            postal: "M5V 1A1",
-            country: "CA",
-          },
-        });
-      }
-
+      // (Re)create Phaser game
       gameRef.current?.destroy(true);
       const game = new Phaser.Game({
         type: Phaser.AUTO,

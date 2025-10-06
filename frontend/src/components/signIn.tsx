@@ -3,12 +3,15 @@ import BootOverlay from "./signin/BootOverlay";
 import TerminalChrome from "./signin/TerminalChrome";
 import Typewriter from "./signin/Typewriter";
 import Prompt from "./signin/Prompt";
+import { usernameExists } from "../lib/api";
+import { loadCustomization } from "../game/state/session"; // <-- single hydrate entrypoint
 
 interface Props {
   onSuccess: () => void;
 }
 
 const AUTH_KEY = "mailme:auth";
+const ACTIVE_USER_KEY = "mailme:activeUser";
 const AUTH_TTL_MS = 60 * 60 * 1000; // 60 minutes
 
 function setAuthToken() {
@@ -19,6 +22,16 @@ function setAuthToken() {
       ttl: AUTH_TTL_MS
     };
     localStorage.setItem(AUTH_KEY, JSON.stringify(token));
+  } catch { /* ignore */ }
+}
+
+function setActiveUser(username: string) {
+  try {
+    const clean = username.trim().replace(/^@/, "");
+    localStorage.setItem(
+      ACTIVE_USER_KEY,
+      JSON.stringify({ username: clean, t: Date.now() })
+    );
   } catch { /* ignore */ }
 }
 
@@ -46,6 +59,12 @@ export default function SignIn({ onSuccess }: Props) {
     failSfx.current = new Audio("/fail.mp3");
     if (successSfx.current) successSfx.current.volume = 0.6;
     if (failSfx.current) failSfx.current.volume = 0.6;
+  }, []);
+
+  // Optional: if this component mounts while an active user already exists,
+  // this will hydrate customization/color immediately (no-op if none).
+  useEffect(() => {
+    (async () => { await loadCustomization().catch(() => {}); })();
   }, []);
 
   const bootLines = [
@@ -81,31 +100,55 @@ export default function SignIn({ onSuccess }: Props) {
     setShowPrompt(true);
   }, []);
 
-  // Submit name:
+  // Submit name -> /v1/users/exists, then set token/user and hydrate via loadCustomization()
   const handleSubmitName = useCallback(
-    (name: string) => {
-      // Echo the typed command first
-      setPostLines((prev) => [...prev, `> ${name}`]);
+    async (name: string) => {
+      const trimmed = name.trim();
+      setPostLines((prev) => [...prev, `> ${name}`]); // echo
 
-      const isAllowed = name === "Jack" || name === "Kylee";
+      if (!trimmed) {
+        setPostLines((prev) => [...prev, "Please enter a non-empty name."]);
+        return;
+      }
 
-      if (isAllowed) {
-        setPostLines((prev) => [...prev, `Access Granted. Welcome, ${name}!`]);
-        setShowPrompt(false);
-        setPromptValue("");
-        try { successSfx.current?.play().catch(() => {}); } catch {}
+      // hide prompt while checking
+      setShowPrompt(false);
+      setPromptValue("");
+      setPostLines((prev) => [...prev, "Checking user directory..."]);
 
-        // >>> persist 60-min auth token before transitioning
-        setAuthToken();
+      try {
+        const exists = await usernameExists(trimmed);
 
-        // transition shortly after
-        setTimeout(onSuccess, 900);
-      } else {
-        setPostLines((prev) => [...prev, "User not recognized. Try again."]);
+        if (exists) {
+          setPostLines((prev) => [...prev, `Access Granted. Welcome, ${trimmed}!`]);
+          try { successSfx.current?.play().catch(() => {}); } catch {}
+
+          // persist 60-min auth token + active user
+          setAuthToken();
+          setActiveUser(trimmed);
+
+          // ---- single hydrate path (color/hat/position + CSS vars) ----
+          setPostLines((prev) => [...prev, "Syncing preferences..."]);
+          try {
+            await loadCustomization(); // reads activeUser from localStorage internally
+          } catch (e: any) {
+            setPostLines((prev) => [...prev, `Preferences sync failed: ${e?.message || "error"}`]);
+          }
+
+          // transition shortly after
+          setTimeout(onSuccess, 900);
+        } else {
+          setPostLines((prev) => [...prev, "User not recognized. Try again."]);
+          try { failSfx.current?.play().catch(() => {}); } catch {}
+          setTimeout(() => setShowPrompt(true), 1200);
+        }
+      } catch (err: any) {
+        setPostLines((prev) => [
+          ...prev,
+          `Lookup failed: ${err?.message || "network error"}`,
+        ]);
         try { failSfx.current?.play().catch(() => {}); } catch {}
-        setShowPrompt(false);
-        setPromptValue("");
-        setTimeout(() => setShowPrompt(true), 2000);
+        setTimeout(() => setShowPrompt(true), 1500);
       }
     },
     [onSuccess]

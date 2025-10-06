@@ -54,3 +54,63 @@ export async function deleteMail(mailId: string) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+/**
+ * Checks if a user with exactly this username exists.
+ * Returns true/false.
+ * No auth required by the backend; we omit the token.
+ */
+export async function usernameExists(username: string): Promise<boolean> {
+  const url = new URL(`${API_BASE}/v1/users/exists`);
+  url.searchParams.set("username", username);
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return Boolean(data?.exists);
+}
+
+/* -------------------------------
+   Customization by USERNAME (server writes)
+-------------------------------- */
+
+/** Fetch a user's customization by username (case-insensitive). */
+export async function getCustomizationFor(username: string): Promise<{
+  ok: boolean;
+  username: string;
+  customization: {
+    playerColor: string | null;
+    playerHat: string | null;
+    position: number[] | null;
+  } | null;
+}> {
+  const token = await getToken();
+  const res = await fetch(
+    `${API_BASE}/v1/users/${encodeURIComponent(username)}/customization`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Save any subset of customization fields for the given username. */
+export async function saveCustomizationFor(
+  username: string,
+  input: { playerColor?: string; playerHat?: string; position?: number[] }
+) {
+  const token = await getToken();
+  const res = await fetch(
+    `${API_BASE}/v1/users/${encodeURIComponent(username)}/customization`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { ok: true }
+}

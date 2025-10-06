@@ -1,9 +1,10 @@
 # api/main.py
 import os
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,10 +24,10 @@ from google.cloud import firestore as gcf
 
 app = FastAPI(title="MailGame Backend")
 
-origins = "*"
+origins = ["*"]  # or ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,   # don’t ship '*' to prod
+    allow_origins=origins,  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,17 +41,41 @@ def _display_name(profile: Optional[dict]) -> str:
     return profile.get("displayName") or profile.get("name") or "Unknown"
 
 def _resolve_recipient_uid(req: SendMailRequest) -> str:
-    if req.toUid:
-        return req.toUid
-    handle = req.toHandle.strip().lower()
+    """
+    Resolve recipient by USERNAME first (req.toHandle), not by UUID.
+    """
     db = gcf.Client()
-    snap = db.collection("usernames").document(handle).get()
-    if not snap.exists:
-        raise HTTPException(status_code=404, detail=f"Handle not found: {handle}")
-    uid = snap.to_dict().get("uid")
-    if not uid:
-        raise HTTPException(status_code=500, detail="Username mapping missing uid")
-    return uid
+
+    # Prefer provided username
+    if getattr(req, "toHandle", None):
+        handle_raw = (req.toHandle or "").strip()
+        if not handle_raw:
+            raise HTTPException(status_code=400, detail="Recipient username (toHandle) is empty")
+        handle_lower = handle_raw.lstrip("@").lower()
+
+        # Try normalized field first
+        try:
+            stream = db.collection("users").where("usernameLower", "==", handle_lower).limit(1).stream()
+            for doc in stream:
+                return doc.id
+        except Exception:
+            pass  # ignore and try exact username field next
+
+        # Fallback: exact match on `username`
+        try:
+            stream2 = db.collection("users").where("username", "==", handle_raw).limit(1).stream()
+            for doc in stream2:
+                return doc.id
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"username lookup failed: {e}")
+
+        raise HTTPException(status_code=404, detail=f"Username not found: {handle_raw}")
+
+    # Fallback to legacy uid if explicitly provided
+    if getattr(req, "toUid", None):
+        return req.toUid
+
+    raise HTTPException(status_code=400, detail="Recipient username (toHandle) or uid (toUid) required")
 
 def _require_provider_keys(provider: str):
     p = (provider or "").upper()
@@ -58,6 +83,44 @@ def _require_provider_keys(provider: str):
         raise HTTPException(400, detail="LOB_KEY not configured")
     if p == "POSTGRID" and not os.getenv("POSTGRID_KEY"):
         raise HTTPException(400, detail="POSTGRID_KEY not configured")
+
+def _find_user_doc_by_username(username: str):
+    """
+    Find a user doc by username (case-insensitive).
+    Returns (doc_ref, data) or raises 404 if not found.
+    """
+    if not username:
+        raise HTTPException(400, detail="username required")
+
+    uname_raw = username.strip()
+    uname_lower = uname_raw.lstrip("@").lower()
+
+    db = gcf.Client()
+
+    # Try normalized field first
+    try:
+        stream = db.collection("users").where("usernameLower", "==", uname_lower).limit(1).stream()
+        for d in stream:
+            return (db.collection("users").document(d.id), d.to_dict() or {})
+    except Exception:
+        pass
+
+    # Fallback: exact match on 'username'
+    try:
+        stream2 = db.collection("users").where("username", "==", uname_raw).limit(1).stream()
+        for d in stream2:
+            return (db.collection("users").document(d.id), d.to_dict() or {})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"username lookup failed: {e}")
+
+    raise HTTPException(status_code=404, detail=f"user not found for username: {uname_raw}")
+
+# -------- pydantic models --------
+
+class CustomizationByUsernameIn(BaseModel):
+    playerColor: Optional[str] = None   # e.g., "red" or "#ff0000"
+    playerHat: Optional[str] = None     # e.g., "None" | "cap" | "visor"
+    position: Optional[List[float]] = None  # [x, y]
 
 # -------- routes --------
 
@@ -75,7 +138,7 @@ async def api_outbox(uid: str = Depends(verify_bearer)):
 
 @app.post("/v1/mail/send", response_model=MailDoc)
 async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
-    # 1) resolve recipient (uid or handle)
+    # 1) resolve recipient (USERNAME preferred; uid fallback)
     to_uid = _resolve_recipient_uid(req)
 
     # 2) profiles/addresses
@@ -100,8 +163,8 @@ async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
     mail_id = create_mail_doc({
         "fromUid": uid,
         "toUid": to_uid,
-        "fromName": from_name,   # ← snapshot
-        "toName": to_name,       # ← snapshot
+        "fromName": from_name,   # snapshot
+        "toName": to_name,       # snapshot
         "subject": req.subject or None,
         "bodyHtml": body_html,
         "status": "DRAFT",
@@ -149,3 +212,78 @@ async def delete_mail(mail_id: str, uid: str = Depends(verify_bearer)):
 
     doc_ref.delete()
     return {"ok": True, "id": mail_id}
+
+# -------- username existence (no uniqueness semantics) --------
+
+@app.get("/v1/users/exists")
+async def username_exists(username: str):
+    """
+    Returns whether a user record exists for the given username (case-insensitive).
+    """
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    db = gcf.Client()
+    try:
+        uname_lower = username.strip().lstrip("@").lower()
+        stream = db.collection("users").where("usernameLower", "==", uname_lower).limit(1).stream()
+        uid = next((doc.id for doc in stream), None)
+        if uid:
+            return {"ok": True, "username": uname_lower, "exists": True, "uid": uid}
+
+        stream2 = db.collection("users").where("username", "==", username.strip()).limit(1).stream()
+        uid2 = next((doc.id for doc in stream2), None)
+        return {"ok": True, "username": uname_lower, "exists": uid2 is not None, "uid": uid2}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"lookup failed: {e}")
+
+# -------- customization by USERNAME (GET/POST) --------
+# Uses username in the URL. We still require auth via verify_bearer.
+
+@app.get("/v1/users/{username}/customization")
+async def get_customization_by_username(username: str, _uid: str = Depends(verify_bearer)):
+    """
+    Returns the target user's customization by username.
+    Response mirrors your 'users' doc: playerColor, playerHat, position, username.
+    """
+    ref, data = _find_user_doc_by_username(username)
+    # Build a consistent payload
+    return {
+        "ok": True,
+        "username": data.get("username"),
+        "customization": {
+            "playerColor": data.get("playerColor"),
+            "playerHat": data.get("playerHat"),
+            "position": data.get("position"),
+        }
+    }
+
+@app.post("/v1/users/{username}/customization")
+async def set_customization_by_username(
+    username: str,
+    c: CustomizationByUsernameIn,
+    _uid: str = Depends(verify_bearer),
+):
+    """
+    Updates the target user's customization by username.
+    Body supports any subset: { playerColor?: str, playerHat?: str, position?: [x,y] }
+    Writes only provided fields under the user's doc.
+    """
+    ref, _ = _find_user_doc_by_username(username)
+
+    patch: dict = {}
+    if c.playerColor is not None:
+        patch["playerColor"] = c.playerColor
+    if c.playerHat is not None:
+        patch["playerHat"] = c.playerHat
+    if c.position is not None:
+        patch["position"] = c.position
+
+    if not patch:
+        raise HTTPException(status_code=400, detail="no fields to update")
+
+    try:
+        ref.set(patch, merge=True)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"persist failed: {e}")

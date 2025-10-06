@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAccent } from "../hooks/useAccents";
 
 type Props = {
   open: boolean;
@@ -21,6 +22,7 @@ export default function ComposeModal({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+  const { hex, rgba } = useAccent();
 
   const disabled = !toUid || !body || busy;
 
@@ -44,15 +46,42 @@ export default function ComposeModal({
     }
   };
 
+  // dynamic styles (accent)
+  const modalDyn = {
+    ...modal,
+    color: hex,
+    border: `2px solid ${hex}`,
+    boxShadow: `0 0 18px ${rgba(0.35)}, inset 0 0 12px ${rgba(0.08)}`,
+  } as const;
+  const headerDyn = { ...header, textShadow: `0 0 6px ${rgba(0.6)}` };
+  const inputDyn = {
+    ...input,
+    border: `1px solid ${rgba(0.35)}`,
+    boxShadow: `inset 0 0 10px ${rgba(0.08)}`,
+  } as const;
+  const textareaDyn = {
+    ...textarea,
+    border: `1px solid ${rgba(0.35)}`,
+    boxShadow: `inset 0 0 10px ${rgba(0.08)}`,
+  } as const;
+  const btnDyn = {
+    ...btn,
+    color: hex,
+    border: `2px solid ${hex}`,
+    boxShadow: `0 0 10px ${rgba(0.25)}`,
+  } as const;
+
+  const stop = (e: React.KeyboardEvent) => e.stopPropagation();
+
   return (
     <div style={backdrop}>
       <div style={scanlines} />
-      <div style={modal}>
-        <div style={header}>
+      <div style={modalDyn}>
+        <div style={headerDyn}>
           <span>[ COMPOSE ]</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onOpenOutbox} style={btn}>View Sent</button>
-            <button onClick={onClose} style={btn}>Close</button>
+            <button onClick={onOpenOutbox} style={btnDyn}>View Sent</button>
+            <button onClick={onClose} style={btnDyn}>Close</button>
           </div>
         </div>
 
@@ -62,7 +91,8 @@ export default function ComposeModal({
             id="to"
             value={toUid}
             onChange={(e) => setToUid(e.target.value)}
-            style={input}
+            onKeyDown={stop}
+            style={inputDyn}
             spellCheck={false}
             placeholder="uid…"
           />
@@ -74,7 +104,8 @@ export default function ComposeModal({
             id="subj"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            style={input}
+            onKeyDown={stop}
+            style={inputDyn}
             spellCheck={false}
             placeholder="optional"
           />
@@ -86,8 +117,9 @@ export default function ComposeModal({
             id="body"
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onKeyDown={stop}
             rows={10}
-            style={textarea}
+            style={textareaDyn}
             spellCheck={false}
             placeholder="type your message…"
           />
@@ -98,10 +130,14 @@ export default function ComposeModal({
             {disabled ? "Fill 'to' and 'body' to enable send." : "> ready"}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onClose} style={btn} disabled={busy}>
+            <button onClick={onClose} style={btnDyn} disabled={busy}>
               Cancel
             </button>
-            <button onClick={handleSend} style={{ ...btn, ...(disabled ? btnDisabled : {}) }} disabled={disabled}>
+            <button
+              onClick={handleSend}
+              style={{ ...btnDyn, ...(disabled ? btnDisabled : {}) }}
+              disabled={disabled}
+            >
               {busy ? "Sending…" : "Send"}
             </button>
           </div>
@@ -111,129 +147,19 @@ export default function ComposeModal({
   );
 }
 
-/** ---------- styles (retro / terminal) ---------- */
-
+/** ---------- static parts (unchanged) ---------- */
 const mono = "ui-monospace, Menlo, Monaco, 'Courier New', monospace";
-
-const backdrop: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background:
-    "radial-gradient(1200px 800px at 50% 0%, rgba(0,255,110,0.06), transparent 60%) rgba(0,0,0,0.9)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 40,
-};
-
-const scanlines: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  pointerEvents: "none",
-  background:
-    "repeating-linear-gradient(to bottom, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px, transparent 4px)",
-};
-
-const modal: React.CSSProperties = {
-  width: 640,
-  maxWidth: "92vw",
-  maxHeight: "86vh",
-  overflow: "hidden",
-  background: "#000",
-  color: "#00ff6a",
-  border: "2px solid #00ff6a",
-  borderRadius: 8,
-  boxShadow: "0 0 18px rgba(0,255,110,0.35), inset 0 0 12px rgba(0,255,110,0.08)",
-  fontFamily: mono,
-  padding: 14,
-  position: "relative",
-  display: "grid",
-  gridTemplateRows: "auto auto auto 1fr auto",
-  gap: 10,
-};
-
-const header: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 2,
-  fontWeight: 700,
-  letterSpacing: 1,
-  textShadow: "0 0 6px rgba(0,255,130,0.6)",
-};
-
-const label: React.CSSProperties = {
-  textTransform: "uppercase",
-  letterSpacing: 1,
-  fontSize: 12,
-  opacity: 0.9,
-  alignSelf: "center",
-};
-
-const row: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "120px 1fr",
-  gap: 10,
-  alignItems: "center",
-};
-
-const rowArea: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "120px 1fr",
-  gap: 10,
-  alignItems: "start",
-};
-
-const baseField: React.CSSProperties = {
-  background: "rgba(0,0,0,0.8)",
-  color: "#baffd6",
-  border: "1px solid rgba(0,255,110,0.35)",
-  borderRadius: 6,
-  outline: "none",
-  fontFamily: mono,
-  fontSize: 14,
-  padding: "8px 10px",
-  boxShadow: "inset 0 0 10px rgba(0,255,110,0.08)",
-};
-
-const input: React.CSSProperties = {
-  ...baseField,
-  height: 36,
-};
-
-const textarea: React.CSSProperties = {
-  ...baseField,
-  height: 220,
-  resize: "vertical",
-  lineHeight: 1.4,
-};
-
-const footer: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginTop: 6,
-};
-
-const hint: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.8,
-};
-
-const btn: React.CSSProperties = {
-  background: "transparent",
-  color: "#00ff6a",
-  border: "2px solid #00ff6a",
-  borderRadius: 4,
-  fontFamily: mono,
-  padding: "6px 12px",
-  cursor: "pointer",
-  textTransform: "uppercase",
-  letterSpacing: 1,
-  boxShadow: "0 0 10px rgba(0,255,110,0.25)",
-} as const;
-
-const btnDisabled: React.CSSProperties = {
-  opacity: 0.5,
-  cursor: "not-allowed",
-};
+const backdrop: React.CSSProperties = { position:"fixed", inset:0, background:"radial-gradient(1200px 800px at 50% 0%, rgba(0,255,110,0.06), transparent 60%) rgba(0,0,0,0.9)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:40 };
+const scanlines: React.CSSProperties = { position:"absolute", inset:0, pointerEvents:"none", background:"repeating-linear-gradient(to bottom, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px, transparent 4px)" };
+const modal: React.CSSProperties = { width:640, maxWidth:"92vw", maxHeight:"86vh", overflow:"hidden", background:"#000", color:"#00ff6a", border:"2px solid #00ff6a", borderRadius:8, boxShadow:"0 0 18px rgba(0,255,110,0.35), inset 0 0 12px rgba(0,255,110,0.08)", fontFamily:mono, padding:14, position:"relative", display:"grid", gridTemplateRows:"auto auto auto 1fr auto", gap:10 };
+const header: React.CSSProperties = { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2, fontWeight:700, letterSpacing:1, textShadow:"0 0 6px rgba(0,255,130,0.6)" };
+const label: React.CSSProperties = { textTransform:"uppercase", letterSpacing:1, fontSize:12, opacity:0.9, alignSelf:"center" };
+const row: React.CSSProperties = { display:"grid", gridTemplateColumns:"120px 1fr", gap:10, alignItems:"center" };
+const rowArea: React.CSSProperties = { display:"grid", gridTemplateColumns:"120px 1fr", gap:10, alignItems:"start" };
+const baseField: React.CSSProperties = { background:"rgba(0,0,0,0.8)", color:"#baffd6", border:"1px solid rgba(0,255,110,0.35)", borderRadius:6, outline:"none", fontFamily:mono, fontSize:14, padding:"8px 10px", boxShadow:"inset 0 0 10px rgba(0,255,110,0.08)" };
+const input: React.CSSProperties = { ...baseField, height:36 };
+const textarea: React.CSSProperties = { ...baseField, height:220, resize:"vertical", lineHeight:1.4 };
+const footer: React.CSSProperties = { display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:6 };
+const hint: React.CSSProperties = { fontSize:12, opacity:0.8 };
+const btn: React.CSSProperties = { background:"transparent", color:"#00ff6a", border:"2px solid #00ff6a", borderRadius:4, fontFamily:mono, padding:"6px 12px", cursor:"pointer", textTransform:"uppercase", letterSpacing:1, boxShadow:"0 0 10px rgba(0,255,110,0.25)" } as const;
+const btnDisabled: React.CSSProperties = { opacity:0.5, cursor:"not-allowed" };
