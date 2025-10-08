@@ -9,22 +9,30 @@ async function getToken(): Promise<string> {
 }
 
 export async function sendMailViaBackend(input: {
-  toUid: string;
+  toHandle: string;                           // <-- was `username`
   subject?: string;
   body: string;
-  provider: "MANUAL" | "LOB" | "POSTGRID";
+  provider?: "NONE" | "MANUAL" | "LOB" | "POSTGRID"; // optional; backend ignores
 }) {
   const token = await getToken();
   const res = await fetch(`${API_BASE}/v1/mail/send`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      toHandle: input.toHandle,               // <-- correct key
+      subject: input.subject ?? null,
+      body: input.body,
+      provider: input.provider ?? "NONE",
+    }),
   });
+
+  if (res.status === 204) return;             // backend returns no body
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  // keep future-proofing in case backend ever returns JSON
+  try { return await res.json(); } catch { return; }
 }
 
 export async function fetchInbox() {
@@ -55,17 +63,11 @@ export async function deleteMail(mailId: string) {
   return res.json();
 }
 
-/**
- * Checks if a user with exactly this username exists.
- * Returns true/false.
- * No auth required by the backend; we omit the token.
- */
+/** Checks if a user with exactly this username exists. */
 export async function usernameExists(username: string): Promise<boolean> {
   const url = new URL(`${API_BASE}/v1/users/exists`);
   url.searchParams.set("username", username);
-  const res = await fetch(url.toString(), {
-    headers: { Accept: "application/json" },
-  });
+  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return Boolean(data?.exists);
@@ -75,7 +77,6 @@ export async function usernameExists(username: string): Promise<boolean> {
    Customization by USERNAME (server writes)
 -------------------------------- */
 
-/** Fetch a user's customization by username (case-insensitive). */
 export async function getCustomizationFor(username: string): Promise<{
   ok: boolean;
   username: string;
@@ -94,7 +95,6 @@ export async function getCustomizationFor(username: string): Promise<{
   return res.json();
 }
 
-/** Save any subset of customization fields for the given username. */
 export async function saveCustomizationFor(
   username: string,
   input: { playerColor?: string; playerHat?: string; position?: number[] }
@@ -106,7 +106,7 @@ export async function saveCustomizationFor(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(input),
     }

@@ -1,33 +1,30 @@
 # api/main.py
 import os
-from typing import Optional, List
+import re
+from typing import Optional, List, Tuple, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from api.auth import verify_bearer
-from api.models import SendMailRequest, MailDoc
+from api.models import SendMailRequest
 from api.firestore import (
     get_user_profile,
-    get_user_address,   # used for existing reads
     create_mail_doc,
-    update_mail_doc,
-    list_inbox,
-    list_outbox,
 )
-from api.providers import render_html, send_letter
 from google.cloud import firestore as gcf
+from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
 app = FastAPI(title="MailGame Backend")
 
 origins = ["*"]  # or ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,69 +32,79 @@ app.add_middleware(
 
 # -------- helpers --------
 
+def _normalize_username(raw: str) -> str:
+    return (raw or "").strip().lstrip("@")
+
 def _display_name(profile: Optional[dict]) -> str:
     if not profile:
         return "Unknown"
-    return profile.get("displayName") or profile.get("name") or "Unknown"
+    return profile.get("displayName") or profile.get("name") or profile.get("username") or "Unknown"
 
-def _resolve_recipient_uid(req: SendMailRequest) -> str:
+def _slugify(s: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9_]+", "", s or "")
+    return s[:32] or "user"
+
+def _provision_username_for(uid: str, prof: dict) -> tuple[str, str]:
     """
-    Resolve recipient by USERNAME first (req.toHandle), not by UUID.
+    Create a username for the caller if missing, ensure case-insensitive uniqueness,
+    write it to users/{uid}, and return (username, usernameLower).
     """
     db = gcf.Client()
 
-    # Prefer provided username
-    if getattr(req, "toHandle", None):
-        handle_raw = (req.toHandle or "").strip()
-        if not handle_raw:
-            raise HTTPException(status_code=400, detail="Recipient username (toHandle) is empty")
-        handle_lower = handle_raw.lstrip("@").lower()
+    # derive candidate
+    email = (prof.get("email") or "").strip()
+    if email and "@" in email:
+        candidate = _slugify(email.split("@", 1)[0].lower())
+    else:
+        dn = (prof.get("displayName") or prof.get("name") or "").strip()
+        candidate = _slugify(dn.replace(" ", "").lower()) if dn else f"user_{uid[:6].lower()}"
 
-        # Try normalized field first
-        try:
-            stream = db.collection("users").where("usernameLower", "==", handle_lower).limit(1).stream()
-            for doc in stream:
-                return doc.id
-        except Exception:
-            pass  # ignore and try exact username field next
+    lower = candidate.lower()
 
-        # Fallback: exact match on `username`
-        try:
-            stream2 = db.collection("users").where("username", "==", handle_raw).limit(1).stream()
-            for doc in stream2:
-                return doc.id
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"username lookup failed: {e}")
+    # ensure uniqueness
+    taken = next((d for d in db.collection("users")
+                  .where("usernameLower", "==", lower).limit(1).stream()), None)
+    if taken and taken.id != uid:
+        for suffix in [uid[:4].lower(), uid[4:8].lower(), "1", "2", "3"]:
+            lower_try = f"{lower}_{suffix}"
+            t2 = next((d for d in db.collection("users")
+                       .where("usernameLower", "==", lower_try).limit(1).stream()), None)
+            if not t2 or t2.id == uid:
+                lower = lower_try
+                candidate = lower
+                break
 
-        raise HTTPException(status_code=404, detail=f"Username not found: {handle_raw}")
+    db.collection("users").document(uid).set(
+        {"username": candidate, "usernameLower": lower},
+        merge=True,
+    )
+    return candidate, lower
 
-    # Fallback to legacy uid if explicitly provided
-    if getattr(req, "toUid", None):
-        return req.toUid
+def _get_or_provision_caller_username(uid: str) -> Tuple[str, str]:
+    """
+    Return (username, usernameLower) for the caller.
+    If missing, auto-provision and persist, then return it.
+    """
+    prof = get_user_profile(uid) or {}
+    uname = _normalize_username(prof.get("username") or "")
+    if uname:
+        return uname, uname.lower()
+    return _provision_username_for(uid, prof)
 
-    raise HTTPException(status_code=400, detail="Recipient username (toHandle) or uid (toUid) required")
-
-def _require_provider_keys(provider: str):
-    p = (provider or "").upper()
-    if p == "LOB" and not os.getenv("LOB_KEY"):
-        raise HTTPException(400, detail="LOB_KEY not configured")
-    if p == "POSTGRID" and not os.getenv("POSTGRID_KEY"):
-        raise HTTPException(400, detail="POSTGRID_KEY not configured")
-
-def _find_user_doc_by_username(username: str):
+def _find_user_doc_by_username(username: str) -> Tuple[Any, Dict[str, Any]]:
     """
     Find a user doc by username (case-insensitive).
     Returns (doc_ref, data) or raises 404 if not found.
     """
     if not username:
-        raise HTTPException(400, detail="username required")
+        raise HTTPException(status_code=400, detail="username required")
 
-    uname_raw = username.strip()
-    uname_lower = uname_raw.lstrip("@").lower()
+    uname_raw = _normalize_username(username)
+    uname_lower = uname_raw.lower()
 
     db = gcf.Client()
 
-    # Try normalized field first
+    # Prefer normalized lower field
     try:
         stream = db.collection("users").where("usernameLower", "==", uname_lower).limit(1).stream()
         for d in stream:
@@ -105,7 +112,7 @@ def _find_user_doc_by_username(username: str):
     except Exception:
         pass
 
-    # Fallback: exact match on 'username'
+    # Fallback exact (case-sensitive) match
     try:
         stream2 = db.collection("users").where("username", "==", uname_raw).limit(1).stream()
         for d in stream2:
@@ -115,6 +122,20 @@ def _find_user_doc_by_username(username: str):
 
     raise HTTPException(status_code=404, detail=f"user not found for username: {uname_raw}")
 
+def _serialize_mail(doc_snap) -> dict:
+    d = doc_snap.to_dict() or {}
+    return {
+        "id": doc_snap.id,
+        "fromUsername": d.get("fromUsername"),
+        "fromName": d.get("fromName"),
+        "toUsername": d.get("toUsername"),
+        "toName": d.get("toName"),
+        "subject": d.get("subject"),
+        "body": d.get("body"),
+        "status": d.get("status"),
+        "createdAt": d.get("createdAt"),
+    }
+
 # -------- pydantic models --------
 
 class CustomizationByUsernameIn(BaseModel):
@@ -122,92 +143,144 @@ class CustomizationByUsernameIn(BaseModel):
     playerHat: Optional[str] = None     # e.g., "None" | "cap" | "visor"
     position: Optional[List[float]] = None  # [x, y]
 
+class SetUsernameIn(BaseModel):
+    username: str = Field(..., min_length=2, max_length=32, description="Desired username (no @)")
+
 # -------- routes --------
 
 @app.get("/v1/health")
 async def health():
     return {"ok": True}
 
-@app.get("/v1/mail/inbox")
-async def api_inbox(uid: str = Depends(verify_bearer)):
-    return list_inbox(uid, limit=20)
+# Claim/update the caller's username (optional; auto-provisioning also happens)
+@app.post("/v1/users/me/username")
+async def set_my_username(body: SetUsernameIn, uid: str = Depends(verify_bearer)):
+    """
+    Claim or update the caller's username. Ensures uniqueness (case-insensitive).
+    Writes both `username` and `usernameLower`.
+    """
+    desired = _normalize_username(body.username)
+    if not desired:
+        raise HTTPException(status_code=400, detail="username required")
 
-@app.get("/v1/mail/outbox")
-async def api_outbox(uid: str = Depends(verify_bearer)):
-    return list_outbox(uid, limit=20)
+    db = gcf.Client()
+    lower = desired.lower()
 
-@app.post("/v1/mail/send", response_model=MailDoc)
-async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
-    # 1) resolve recipient (USERNAME preferred; uid fallback)
-    to_uid = _resolve_recipient_uid(req)
-
-    # 2) profiles/addresses
-    to_profile = get_user_profile(to_uid)
-    if not to_profile or not to_profile.get("address"):
-        raise HTTPException(status_code=400, detail="Recipient address missing")
-    to_addr = to_profile["address"]
-
-    from_profile = get_user_profile(uid) or {}
-    from_addr = from_profile.get("address") or to_addr
-
-    # 3) denormalized names
-    from_name = _display_name(from_profile)
-    to_name = _display_name(to_profile)
-
-    # 4) render + sanity for real providers
-    body_html = render_html(req.subject, req.body)
-    if req.provider in ("LOB", "POSTGRID"):
-        _require_provider_keys(req.provider)
-
-    # 5) create draft
-    mail_id = create_mail_doc({
-        "fromUid": uid,
-        "toUid": to_uid,
-        "fromName": from_name,   # snapshot
-        "toName": to_name,       # snapshot
-        "subject": req.subject or None,
-        "bodyHtml": body_html,
-        "status": "DRAFT",
-        "provider": req.provider,
-    })
-
-    # 6) send (MANUAL simulates)
-    status, provider_ref = await send_letter(req.provider, to_addr, from_addr, body_html)
-
-    # 7) update and surface failure as non-200
-    patch = {"status": status}
-    if provider_ref:
-        patch["providerRef"] = provider_ref
-    update_mail_doc(mail_id, patch)
-
-    if status != "SENT":
-        raise HTTPException(status_code=502, detail=f"Provider {req.provider} failed: {provider_ref}")
-
-    return MailDoc(
-        id=mail_id,
-        fromUid=uid,
-        toUid=to_uid,
-        subject=req.subject,
-        bodyHtml=body_html,
-        status=status,
-        provider=req.provider,
-        providerRef=provider_ref,
-        fromName=from_name,
-        toName=to_name,
+    # uniqueness check (case-insensitive)
+    existing = next(
+        (doc for doc in db.collection("users").where("usernameLower", "==", lower).limit(1).stream()),
+        None
     )
+    # If name exists but belongs to same uid → allow idempotent set
+    if existing and existing.id != uid:
+        raise HTTPException(status_code=409, detail="username already taken")
 
+    db.collection("users").document(uid).set(
+        {"username": desired, "usernameLower": lower},
+        merge=True,
+    )
+    return {"ok": True, "username": desired}
+
+# Inbox indexed by username (NOT uid)
+@app.get("/v1/mail/inbox")
+async def api_inbox(
+    uid: str = Depends(verify_bearer),
+    limit: int = Query(20, ge=1, le=100),
+):
+    print(f'Obtained: {uid}')
+    _, caller_lower = _get_or_provision_caller_username(uid)
+    db = gcf.Client()
+    print(f'Caller lower: {caller_lower}')
+    q = (
+        db.collection("mail")
+        .where("toUsernameLower", "==", caller_lower)
+        .order_by("createdAt", direction=gcf.Query.DESCENDING)
+        .limit(limit)
+    )
+    snaps = list(q.stream())
+    return {"ok": True, "items": [_serialize_mail(s) for s in snaps]}
+
+# Outbox indexed by username (NOT uid)
+@app.get("/v1/mail/outbox")
+async def api_outbox(
+    uid: str = Depends(verify_bearer),
+    limit: int = Query(20, ge=1, le=100),
+):
+    print(f'Obtained: {uid}')
+    _, caller_lower = _get_or_provision_caller_username(uid)
+    print(f'Caller lower: {caller_lower}')
+
+    db = gcf.Client()
+    q = (
+        db.collection("mail")
+        .where("fromUsernameLower", "==", caller_lower)
+        .order_by("createdAt", direction=gcf.Query.DESCENDING)
+        .limit(limit)
+    )
+    snaps = list(q.stream())
+    return {"ok": True, "items": [_serialize_mail(s) for s in snaps]}
+
+# Minimal 'send': username-only indexing, no provider/render/drafts, no response body
+@app.post("/v1/mail/send", status_code=204)
+async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
+    """
+    Required on req: toHandle (recipient username), body (non-empty). subject optional.
+    Stores ONLY username-indexed fields (no uids).
+    """
+    to_handle = _normalize_username(getattr(req, "toHandle", None) or getattr(req, "username", "") or "")
+    if not to_handle:
+        raise HTTPException(status_code=400, detail="toHandle (recipient username) is required")
+
+    # Resolve recipient (to capture displayName + canonical username)
+    _ref_to, to_data = _find_user_doc_by_username(to_handle)
+    to_username = _normalize_username(to_data.get("username") or to_handle)
+    to_username_lower = to_username.lower()
+
+    # Caller username (for indexing and snapshots) — auto-provision if missing
+    from_username, from_username_lower = _get_or_provision_caller_username(uid)
+    from_name = _display_name(get_user_profile(uid) or {})
+
+    # Body sanity
+    if not getattr(req, "body", None) or not str(req.body).strip():
+        raise HTTPException(status_code=400, detail="body is required")
+
+    # Persist one doc — no UUID fields stored
+    mail_doc = {
+        "fromUsername": from_username,
+        "fromUsernameLower": from_username_lower,
+        "fromName": from_name,              # snapshot
+
+        "toUsername": to_username,
+        "toUsernameLower": to_username_lower,
+        "toName": _display_name(to_data),   # snapshot
+
+        "subject": (getattr(req, "subject", None) or None),
+        "body": str(req.body),
+        "status": "STORED",
+        "provider": "NONE",
+
+        "createdAt": SERVER_TIMESTAMP,
+    }
+
+    create_mail_doc(mail_doc)
+    return Response(status_code=204)
+
+# Delete authorized by recipient username (NOT uid)
 @app.delete("/v1/mail/{mail_id}")
 async def delete_mail(mail_id: str, uid: str = Depends(verify_bearer)):
+    _, caller_lower = _get_or_provision_caller_username(uid)
+
     db = gcf.Client()
     doc_ref = db.collection("mail").document(mail_id)
     snap = doc_ref.get()
 
     if not snap.exists:
         raise HTTPException(status_code=404, detail="Mail not found")
-    data = snap.to_dict()
+    data = snap.to_dict() or {}
 
-    # recipient-only delete; add `or data.get("fromUid")==uid` if you want sender retract
-    if data.get("toUid") != uid:
+    # recipient-only delete; if you also want sender to retract, include:
+    # or data.get("fromUsernameLower") == caller_lower
+    if data.get("toUsernameLower") != caller_lower:
         raise HTTPException(status_code=403, detail="Not authorized to delete this mail")
 
     doc_ref.delete()
@@ -224,30 +297,21 @@ async def username_exists(username: str):
         raise HTTPException(status_code=400, detail="username is required")
 
     db = gcf.Client()
-    try:
-        uname_lower = username.strip().lstrip("@").lower()
-        stream = db.collection("users").where("usernameLower", "==", uname_lower).limit(1).stream()
-        uid = next((doc.id for doc in stream), None)
-        if uid:
-            return {"ok": True, "username": uname_lower, "exists": True, "uid": uid}
+    uname_lower = _normalize_username(username).lower()
+    stream = db.collection("users").where("usernameLower", "==", uname_lower).limit(1).stream()
+    uid = next((doc.id for doc in stream), None)
+    if uid:
+        return {"ok": True, "username": uname_lower, "exists": True}
 
-        stream2 = db.collection("users").where("username", "==", username.strip()).limit(1).stream()
-        uid2 = next((doc.id for doc in stream2), None)
-        return {"ok": True, "username": uname_lower, "exists": uid2 is not None, "uid": uid2}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"lookup failed: {e}")
+    stream2 = db.collection("users").where("username", "==", _normalize_username(username)).limit(1).stream()
+    uid2 = next((doc.id for doc in stream2), None)
+    return {"ok": True, "username": uname_lower, "exists": uid2 is not None}
 
 # -------- customization by USERNAME (GET/POST) --------
-# Uses username in the URL. We still require auth via verify_bearer.
 
 @app.get("/v1/users/{username}/customization")
 async def get_customization_by_username(username: str, _uid: str = Depends(verify_bearer)):
-    """
-    Returns the target user's customization by username.
-    Response mirrors your 'users' doc: playerColor, playerHat, position, username.
-    """
     ref, data = _find_user_doc_by_username(username)
-    # Build a consistent payload
     return {
         "ok": True,
         "username": data.get("username"),
@@ -264,11 +328,6 @@ async def set_customization_by_username(
     c: CustomizationByUsernameIn,
     _uid: str = Depends(verify_bearer),
 ):
-    """
-    Updates the target user's customization by username.
-    Body supports any subset: { playerColor?: str, playerHat?: str, position?: [x,y] }
-    Writes only provided fields under the user's doc.
-    """
     ref, _ = _find_user_doc_by_username(username)
 
     patch: dict = {}
@@ -282,8 +341,5 @@ async def set_customization_by_username(
     if not patch:
         raise HTTPException(status_code=400, detail="no fields to update")
 
-    try:
-        ref.set(patch, merge=True)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"persist failed: {e}")
+    ref.set(patch, merge=True)
+    return {"ok": True}

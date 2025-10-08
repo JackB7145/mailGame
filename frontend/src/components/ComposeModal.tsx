@@ -1,48 +1,78 @@
 import { useState, useEffect } from "react";
 import { useAccent } from "../hooks/useAccents";
+import { usernameExists } from "../lib/api"; // <-- assumes: (name: string) => Promise<boolean>
 
 type Props = {
   open: boolean;
-  meUid: string;
-  initialTo?: string;
-  onSend: (toUid: string, subject: string, body: string) => Promise<void>;
+  initialToName?: string;
+  onSend: (toName: string, subject: string, body: string) => Promise<void>;
   onClose: () => void;
   onOpenOutbox: () => void;
 };
 
 export default function ComposeModal({
   open,
-  meUid,
-  initialTo,
+  initialToName,
   onSend,
   onClose,
   onOpenOutbox,
 }: Props) {
-  const [toUid, setToUid] = useState(initialTo ?? "");
+  const [toName, setToName] = useState(initialToName ?? "");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // recipient validation
+  const [validRecipient, setValidRecipient] = useState<null | boolean>(null);
+  const [checkingRecipient, setCheckingRecipient] = useState(false);
+
   const { hex, rgba } = useAccent();
 
-  const disabled = !toUid || !body || busy;
+  const disabled =
+    !toName ||
+    !body ||
+    busy ||
+    validRecipient === false ||
+    checkingRecipient; // prevent send while checking or invalid
 
   useEffect(() => {
     if (!open) return;
-    setToUid(initialTo ?? meUid);
+    setToName(initialToName ?? "");
     setSubject("");
     setBody("");
     setBusy(false);
-  }, [open, initialTo, meUid]);
+    setValidRecipient(null);
+    setCheckingRecipient(false);
+  }, [open, initialToName]);
 
   if (!open) return null;
 
   const handleSend = async () => {
     setBusy(true);
     try {
-      await onSend(toUid.trim(), subject.trim(), body);
+      const cleanName = toName.replace(/\s+/g, " ").trim();
+      await onSend(cleanName, subject.trim(), body);
       onClose();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleBlurToName = async () => {
+    const candidate = toName.trim();
+    if (!candidate) {
+      setValidRecipient(null);
+      return;
+    }
+    setCheckingRecipient(true);
+    try {
+      const exists = await usernameExists(candidate);
+      setValidRecipient(!!exists);
+    } catch {
+      // network/api error → treat as invalid for safety
+      setValidRecipient(false);
+    } finally {
+      setCheckingRecipient(false);
     }
   };
 
@@ -58,7 +88,25 @@ export default function ComposeModal({
     ...input,
     border: `1px solid ${rgba(0.35)}`,
     boxShadow: `inset 0 0 10px ${rgba(0.08)}`,
+    transition: "box-shadow 120ms ease, border-color 120ms ease",
   } as const;
+
+  // name field: override border based on validity
+  const nameFieldDyn: React.CSSProperties =
+    validRecipient === true
+      ? {
+          ...inputDyn,
+          border: "2px solid rgba(0,255,110,0.95)",
+          boxShadow: "0 0 10px rgba(0,255,110,0.35), inset 0 0 10px rgba(0,255,110,0.10)",
+        }
+      : validRecipient === false
+      ? {
+          ...inputDyn,
+          border: "2px solid rgba(255,0,0,0.95)",
+          boxShadow: "0 0 10px rgba(255,0,0,0.35), inset 0 0 10px rgba(255,0,0,0.10)",
+        }
+      : inputDyn;
+
   const textareaDyn = {
     ...textarea,
     border: `1px solid ${rgba(0.35)}`,
@@ -86,17 +134,37 @@ export default function ComposeModal({
         </div>
 
         <div style={row}>
-          <label style={label} htmlFor="to">to (uid)</label>
+          <label style={label} htmlFor="to">to (name)</label>
           <input
             id="to"
-            value={toUid}
-            onChange={(e) => setToUid(e.target.value)}
+            value={toName}
+            onChange={(e) => {
+              setToName(e.target.value);
+              setValidRecipient(null); // reset while editing
+            }}
+            onBlur={handleBlurToName}
             onKeyDown={stop}
-            style={inputDyn}
+            style={nameFieldDyn}
             spellCheck={false}
-            placeholder="uid…"
+            placeholder="e.g., Alice Chen"
           />
         </div>
+
+        {checkingRecipient && (
+          <div style={{ margin: "-6px 0 4px 120px", fontSize: 12, opacity: 0.8 }}>
+            Checking recipient…
+          </div>
+        )}
+        {validRecipient === false && (
+          <div style={{ margin: "-6px 0 4px 120px", fontSize: 12, color: "rgba(255,80,80,0.95)" }}>
+            No user found with that name.
+          </div>
+        )}
+        {validRecipient === true && (
+          <div style={{ margin: "-6px 0 4px 120px", fontSize: 12, color: "rgba(0,255,140,0.95)" }}>
+            Recipient found.
+          </div>
+        )}
 
         <div style={row}>
           <label style={label} htmlFor="subj">subject</label>
@@ -127,7 +195,13 @@ export default function ComposeModal({
 
         <div style={footer}>
           <span style={hint}>
-            {disabled ? "Fill 'to' and 'body' to enable send." : "> ready"}
+            {disabled
+              ? validRecipient === false
+                ? "Recipient doesn't exist."
+                : checkingRecipient
+                ? "Verifying recipient…"
+                : "Fill 'to' and 'body' to enable send."
+              : "> ready"}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={onClose} style={btnDyn} disabled={busy}>
