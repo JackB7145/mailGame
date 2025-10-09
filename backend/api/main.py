@@ -10,6 +10,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import firebase_admin
+from firebase_admin import credentials, auth as fbauth
+
+# Use ADC; set GOOGLE_APPLICATION_CREDENTIALS to your service-account JSON
+if not firebase_admin._apps:
+    try:
+        cred = credentials.ApplicationDefault()
+    except Exception:
+        # fallback if you prefer an explicit JSON path in env
+        cred = credentials.Certificate(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+    firebase_admin.initialize_app(cred)
+    
 from api.auth import verify_bearer
 from api.models import SendMailRequest
 from api.firestore import (
@@ -343,3 +355,54 @@ async def set_customization_by_username(
 
     ref.set(patch, merge=True)
     return {"ok": True}
+
+
+class DevLoginIn(BaseModel):
+    username: str
+
+@app.post("/v1/auth/dev-login")
+async def dev_login(body: DevLoginIn):
+    """
+    DEV ONLY: Given a username, return a Firebase Custom Token that signs in as that user.
+    - If a Firestore user doc exists (case-insensitive), reuse its UID.
+    - Otherwise, create a new Firebase Auth user + Firestore user doc.
+    """
+    username = _normalize_username(body.username)
+    if not username:
+        raise HTTPException(status_code=400, detail="username required")
+
+    uname_lower = username.lower()
+    db = gcf.Client()
+
+    # Try usernameLower first
+    snap = next(
+        (d for d in db.collection("users")
+         .where("usernameLower", "==", uname_lower).limit(1).stream()),
+        None
+    )
+
+    if snap:
+        uid = snap.id
+    else:
+        # Try exact case-sensitive match
+        snap2 = next(
+            (d for d in db.collection("users")
+             .where("username", "==", username).limit(1).stream()),
+            None
+        )
+        if snap2:
+            uid = snap2.id
+        else:
+            # Create a brand new auth user and Firestore user doc
+            user_record = fbauth.create_user()  # auto-generates uid
+            uid = user_record.uid
+            db.collection("users").document(uid).set(
+                {"username": username, "usernameLower": uname_lower},
+                merge=True,
+            )
+
+    # Mint a custom token; include username as a custom claim for convenience
+    token_bytes = fbauth.create_custom_token(uid, {"username": username})
+    token = token_bytes.decode("utf-8") if isinstance(token_bytes, (bytes, bytearray)) else token_bytes
+
+    return {"ok": True, "uid": uid, "token": token}
