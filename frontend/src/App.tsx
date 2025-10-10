@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import { IntroScene } from "./game/scenes/IntroScene";
 import { MailScene } from "./game/scenes/MailScene";
-import { ensureUsernameAuth } from "./lib/firebase"; // <-- NEW: sign in AS username (no anon)
+import { ensureUsernameAuth } from "./lib/firebase"; // signs in using username (no anon)
 import ComposeModal from "./components/ComposeModal";
 import InboxModal from "./components/InboxModal";
 import OutboxModal from "./components/OutboxModal";
@@ -20,15 +20,16 @@ primeAccentFromCache();
 const WIDTH = screen.width * 0.95;
 const HEIGHT = screen.height * 0.95;
 
-const AUTH_KEY = "mailme:auth";
-
+/** Validate the mailme:activeUser token */
 function isAuthValid(): boolean {
   try {
-    const raw = localStorage.getItem(AUTH_KEY);
+    const raw = localStorage.getItem("mailme:activeUser");
     if (!raw) return false;
+
     const parsed = JSON.parse(raw) as { username?: string; t: number; ttl?: number };
-    if (!parsed?.t || !parsed?.username) return false;
-    const ttl = typeof parsed.ttl === "number" ? parsed.ttl : 60 * 60 * 1000; // fallback 60m
+    if (!parsed?.username || !parsed?.t) return false;
+
+    const ttl = typeof parsed.ttl === "number" ? parsed.ttl : 60 * 60 * 1000; // 1h default
     return Date.now() - parsed.t < ttl;
   } catch {
     return false;
@@ -38,8 +39,8 @@ function isAuthValid(): boolean {
 export default function App() {
   const gameRef = useRef<Phaser.Game | null>(null);
 
-  // Keep uid for auth context; backend auth is by token, not by this value directly.
-  const [uid, setUid] = useState<string | null>(null);
+  // Track username instead of UID
+  const [username, setUsername] = useState<string | null>(null);
 
   // name-based compose target (NOT a uid)
   const [initialToName, setInitialToName] = useState<string>("");
@@ -67,13 +68,13 @@ export default function App() {
     return () => clearInterval(id);
   }, [signedIn]);
 
+  // initialize Phaser game + username auth
   useEffect(() => {
     if (!signedIn) return;
 
     (async () => {
-      // NEW: sign in using custom token for the username from localStorage (no anonymous)
-      const u = await ensureUsernameAuth();
-      setUid(u);
+      const name = await ensureUsernameAuth(); // returns username
+      setUsername(name);
 
       // (Re)create Phaser game
       gameRef.current?.destroy(true);
@@ -104,7 +105,7 @@ export default function App() {
   // Actual API call, triggered by the modal via its onSend prop.
   async function handleSend(toName: string, subject: string, body: string) {
     await sendMailViaBackend({
-      toHandle: toName,  // backend expects username/handle
+      toUsername: toName, // backend expects username/handle
       subject,
       body,
       provider: "NONE",
@@ -136,10 +137,11 @@ export default function App() {
           maxWidth: "100%",
         }}
       />
+
       <ComposeModal
         open={composeOpen}
-        initialToName={initialToName}   // pass name, not uid
-        onSend={handleSend}             // modal calls this; this hits the API
+        initialToName={initialToName}
+        onSend={handleSend}
         onClose={() => setComposeOpen(false)}
         onOpenOutbox={() => {
           setComposeOpen(false);
@@ -147,9 +149,8 @@ export default function App() {
         }}
       />
 
-      {/* These can ignore uid if server fetches by username already. */}
-      <InboxModal open={inboxOpen} meUid={uid ?? ""} onClose={() => setInboxOpen(false)} />
-      <OutboxModal open={outboxOpen} meUid={uid ?? ""} onClose={() => setOutboxOpen(false)} />
+      <InboxModal open={inboxOpen} meUid={username ?? ""} onClose={() => setInboxOpen(false)} />
+      <OutboxModal open={outboxOpen} meUid={username ?? ""} onClose={() => setOutboxOpen(false)} />
     </div>
   );
 }

@@ -57,7 +57,7 @@ def list_inbox(username_lower: str, limit: int = 20) -> List[Dict[str, Any]]:
     """
     q = (
         _db.collection("mail")
-           .where("toUsernameLower", "==", username_lower)
+           .where("toUsernameLower", "==", username_lower.lower())
            .order_by("createdAt", direction=firestore.Query.DESCENDING)
            .limit(limit)
     )

@@ -234,37 +234,17 @@ async def api_outbox(
 
 # Minimal 'send': username-only indexing, no provider/render/drafts, no response body
 @app.post("/v1/mail/send", status_code=204)
-async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
-    """
-    Required on req: toHandle (recipient username), body (non-empty). subject optional.
-    Stores ONLY username-indexed fields (no uids).
-    """
-    to_handle = _normalize_username(getattr(req, "toHandle", None) or getattr(req, "username", "") or "")
-    if not to_handle:
-        raise HTTPException(status_code=400, detail="toHandle (recipient username) is required")
+async def api_send(req: SendMailRequest):
 
-    # Resolve recipient (to capture displayName + canonical username)
-    _ref_to, to_data = _find_user_doc_by_username(to_handle)
-    to_username = _normalize_username(to_data.get("username") or to_handle)
-    to_username_lower = to_username.lower()
+    from_username = req.fromUsername
+    to_username = req.toUsername
 
-    # Caller username (for indexing and snapshots) — auto-provision if missing
-    from_username, from_username_lower = _get_or_provision_caller_username(uid)
-    from_name = _display_name(get_user_profile(uid) or {})
-
-    # Body sanity
-    if not getattr(req, "body", None) or not str(req.body).strip():
-        raise HTTPException(status_code=400, detail="body is required")
-
-    # Persist one doc — no UUID fields stored
     mail_doc = {
+        "fromName": from_username,
         "fromUsername": from_username,
-        "fromUsernameLower": from_username_lower,
-        "fromName": from_name,              # snapshot
-
+        "fromUsernameLower": from_username.lower(),
         "toUsername": to_username,
-        "toUsernameLower": to_username_lower,
-        "toName": _display_name(to_data),   # snapshot
+        "toUsernameLower": to_username.lower(), 
 
         "subject": (getattr(req, "subject", None) or None),
         "body": str(req.body),
@@ -274,6 +254,7 @@ async def api_send(req: SendMailRequest, uid: str = Depends(verify_bearer)):
         "createdAt": SERVER_TIMESTAMP,
     }
 
+        
     create_mail_doc(mail_doc)
     return Response(status_code=204)
 

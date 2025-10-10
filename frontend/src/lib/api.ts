@@ -8,32 +8,35 @@ async function getToken(): Promise<string> {
   return token;
 }
 
-export async function sendMailViaBackend(input: {
-  toHandle: string;                           // <-- was `username`
-  subject?: string;
-  body: string;
-  provider?: "NONE" | "MANUAL" | "LOB" | "POSTGRID"; // optional; backend ignores
-}) {
-  const token = await getToken();
-  const res = await fetch(`${API_BASE}/v1/mail/send`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      toHandle: input.toHandle,               // <-- correct key
-      subject: input.subject ?? null,
-      body: input.body,
-      provider: input.provider ?? "NONE",
-    }),
-  });
+  export async function sendMailViaBackend(input: {
+    toUsername: string;
+    subject?: string;
+    body: string;
+    provider?: "NONE" | "MANUAL" | "LOB" | "POSTGRID";
+  }) {
+    const token = await getToken();
+    const raw = localStorage.getItem("mailme:activeUser");
+    const fromUsername = raw ? JSON.parse(raw).username : "unknown";
 
-  if (res.status === 204) return;             // backend returns no body
-  if (!res.ok) throw new Error(await res.text());
-  // keep future-proofing in case backend ever returns JSON
-  try { return await res.json(); } catch { return; }
-}
+    const res = await fetch(`${API_BASE}/v1/mail/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        fromUsername: fromUsername,                // 🆕 include the real username
+        toUsername: input.toUsername,
+        subject: input.subject ?? null,
+        body: input.body,
+        provider: "NONE",
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Mail send failed: ${res.status}`);
+    return res.json();
+  }
+
 
 export async function fetchInbox() {
   const token = await getToken();
