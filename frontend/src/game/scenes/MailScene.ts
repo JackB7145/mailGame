@@ -14,6 +14,9 @@ import { createInput, Keys } from "../input/InputBindings";
 import { PlayerController } from "../player/PlayerController";
 import { Item } from "../world/layout";
 
+// ✅ session helpers handle all customization logic
+import { loadCustomization, getCustomization, setCustomizationGlobal } from "../state/session";
+
 type Spawn = { x: number; y: number };
 
 export class MailScene extends Phaser.Scene {
@@ -40,7 +43,9 @@ export class MailScene extends Phaser.Scene {
   private pauseRoot!: Phaser.GameObjects.Container;
   private pauseVisible = false;
 
-  constructor() { super(MailScene.KEY); }
+  constructor() {
+    super(MailScene.KEY);
+  }
 
   preload() {
     if (!this.cache.audio.exists("bgm")) this.load.audio("bgm", ["bgm.mp3"]);
@@ -56,65 +61,74 @@ export class MailScene extends Phaser.Scene {
   create() {
     this.input.setTopOnly(true);
 
-    try {
-      const raw = localStorage.getItem("courier:custom");
-      if (raw) this.custom = JSON.parse(raw);
-    } catch {}
+    // Run async setup safely inside IIFE (Phaser doesn't await create())
+    (async () => {
+      // ✅ Load customization from backend via session (handles cache + accent)
+      try {
+        const loaded = await loadCustomization();
+        if (loaded) this.custom = loaded;
+        else {
+          const local = getCustomization();
+          if (local) this.custom = local;
+        }
+      } catch (err) {
+        console.warn("Customization load failed:", err);
+      }
 
-    this.mapData = this.cache.json.get("map") ?? [];
+      // ---------- Build world after customization is loaded ----------
+      this.mapData = this.cache.json.get("map") ?? [];
 
-    startMusicWithUnlock(this, "bgm");
-    createWorldLayers(this, this.WORLD_W, this.WORLD_H);
-    this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
+      startMusicWithUnlock(this, "bgm");
+      createWorldLayers(this, this.WORLD_W, this.WORLD_H);
+      this.obstacles = createPhysicsWorld(this, this.WORLD_W, this.WORLD_H);
 
-    this.build = buildFromItems(this, this.obstacles, this.mapData);
-    this.add.existing(this.build.root);
+      this.build = buildFromItems(this, this.obstacles, this.mapData);
+      this.add.existing(this.build.root);
 
-    const startX = this.spawnFromIntro?.x ?? 980;
-    const startY = this.spawnFromIntro?.y ?? 1040;
-    this.player = new PlayerController(this, startX, startY, this.custom);
-    this.player.attachColliders(this.obstacles);
-    this.player.followWith(this.cameras.main);
+      const startX = this.spawnFromIntro?.x ?? 980;
+      const startY = this.spawnFromIntro?.y ?? 1040;
+      this.player = new PlayerController(this, startX, startY, this.custom);
+      this.player.attachColliders(this.obstacles);
+      this.player.followWith(this.cameras.main);
 
-    this.keys = createInput(this);
+      this.keys = createInput(this);
+      this.hud = new Hud(this);
+      this.addHint("WASD/Arrows to move, E interact, F settings.");
 
-    this.hud = new Hud(this);
-    this.addHint("WASD/Arrows to move, E interact, F settings.");
+      // ✅ Customizer setup (fully session-integrated)
+      this.customizer = new Customizer(this, {
+        initial: this.custom,
+        onChange: (c) => {
+          this.custom = c;
+          this.player.setCustomization(c);
+          setCustomizationGlobal(c); // updates CSS + backend + caches
+        },
+        onFinish: () => {
+          this.customizing = false;
+          this.setHint("WASD/Arrows to move, E interact, F settings.");
+        },
+      });
 
-    // DO NOT add fullscreen/volume to HUD anymore (to avoid duplication)
+      this.customizer.close();
+      this.customizing = false;
+      this.buildPauseOverlay();
 
-    this.customizer = new Customizer(this, {
-      initial: this.custom,
-      onChange: (c) => {
-        this.custom = c;
-        this.player.setCustomization(c);
-        try { localStorage.setItem("courier:custom", JSON.stringify(c)); } catch {}
-      },
-      onFinish: () => {
-        this.customizing = false;
-        this.setHint("WASD/Arrows to move, E interact, F settings.");
-      },
-    });
+      // Pause overlay toggle
+      this.input.keyboard?.on("keydown-F", () => {
+        if (this.customizer?.isOpen?.()) return;
+        this.togglePauseOverlay();
+      });
 
-    // Start fully closed
-    this.customizer.close();
-    this.customizing = false;
-
-    // Pause/settings overlay (shows FS + Volume)
-    this.buildPauseOverlay();
-
-    // Toggle with "F" (not ESC). If customizer is open, ignore.
-    this.input.keyboard?.on("keydown-F", () => {
-      if (this.customizer?.isOpen?.()) return;
-      this.togglePauseOverlay();
-    });
-
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.removeAllListeners("keydown-F");
-    });
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.input.keyboard?.removeAllListeners("keydown-F");
+      });
+    })();
   }
 
   update() {
+    // ✅ guard: prevent running before player is ready
+    if (!this.player) return;
+
     if (this.customizing || this.pauseVisible) {
       this.player.body.setVelocity(0, 0);
       return;
@@ -132,19 +146,22 @@ export class MailScene extends Phaser.Scene {
       const p = this.player.body;
       const nearInbox =
         Phaser.Math.Distance.Between(
-          p.x, p.y,
+          p.x,
+          p.y,
           this.build.interactables.inbox.container.x,
           this.build.interactables.inbox.container.y
         ) < 64;
       const nearCompose =
         Phaser.Math.Distance.Between(
-          p.x, p.y,
+          p.x,
+          p.y,
           this.build.interactables.compose.container.x,
           this.build.interactables.compose.container.y
         ) < 64;
       const nearWardrobe =
         Phaser.Math.Distance.Between(
-          p.x, p.y,
+          p.x,
+          p.y,
           this.build.interactables.wardrobe.container.x,
           this.build.interactables.wardrobe.container.y
         ) < 64;
@@ -175,27 +192,33 @@ export class MailScene extends Phaser.Scene {
     t?.setText(text);
   }
 
-  // ----------------- Pause Overlay (inline) -----------------
+  // ----------------- Pause Overlay -----------------
   private buildPauseOverlay() {
     const DIALOG_W = 360;
     const DIALOG_H = 160;
 
-    const root = this.add.container(0, 0)
+    const root = this.add
+      .container(0, 0)
       .setScrollFactor(0)
       .setDepth(11000)
       .setVisible(false);
     this.pauseRoot = root;
 
-    // dimmer blocks clicks
     const dim = this.add
       .rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.5)
       .setOrigin(0)
       .setInteractive();
     root.add(dim);
 
-    // panel
     const panel = this.add
-      .rectangle(this.scale.width / 2, this.scale.height / 2, DIALOG_W, DIALOG_H, 0x0a0a0a, 1)
+      .rectangle(
+        this.scale.width / 2,
+        this.scale.height / 2,
+        DIALOG_W,
+        DIALOG_H,
+        0x0a0a0a,
+        1
+      )
       .setStrokeStyle(2, 0xffffff, 0.2)
       .setInteractive();
     root.add(panel);
@@ -209,9 +232,8 @@ export class MailScene extends Phaser.Scene {
       .setOrigin(0.5);
     root.add(title);
 
-    // widgets (ONLY shown in overlay)
     const fsBtn = createFullscreenButton(this, { width: 36, height: 28 });
-    const vol   = createVolumeSlider(this, { width: 180, height: 8, label: "Vol" });
+    const vol = createVolumeSlider(this, { width: 180, height: 8, label: "Vol" });
 
     fsBtn.setPosition(panel.x - 120, panel.y + 20);
     vol.setPosition(panel.x - 60, panel.y + 20);

@@ -51,9 +51,31 @@ def update_mail_doc(mail_id: str, patch: Dict[str, Any]) -> None:
     _db.collection("mail").document(mail_id).update(patch)
 
 
+def _serialize_mail_doc(doc: firestore.DocumentSnapshot) -> Dict[str, Any]:
+    """
+    Ensure consistent serialization of a mail document.
+    Always includes `images`, even if missing in Firestore.
+    """
+    d = doc.to_dict() or {}
+    return {
+        "id": doc.id,
+        "fromUsername": d.get("fromUsername"),
+        "fromUsernameLower": d.get("fromUsernameLower"),
+        "toUsername": d.get("toUsername"),
+        "toUsernameLower": d.get("toUsernameLower"),
+        "subject": d.get("subject"),
+        "body": d.get("body"),
+        "status": d.get("status"),
+        "provider": d.get("provider"),
+        "images": d.get("images", []),  # ✅ Always return list (safe default)
+        "createdAt": d.get("createdAt"),
+    }
+
+
 def list_inbox(username_lower: str, limit: int = 20) -> List[Dict[str, Any]]:
     """
-    Return mails addressed to `username_lower` (case-insensitive index).
+    Return mails addressed to `username_lower` (case-insensitive index),
+    including images and metadata.
     """
     q = (
         _db.collection("mail")
@@ -61,17 +83,18 @@ def list_inbox(username_lower: str, limit: int = 20) -> List[Dict[str, Any]]:
            .order_by("createdAt", direction=firestore.Query.DESCENDING)
            .limit(limit)
     )
-    return [{"id": d.id, **(d.to_dict() or {})} for d in q.stream()]
+    return [_serialize_mail_doc(d) for d in q.stream()]
 
 
 def list_outbox(username_lower: str, limit: int = 20) -> List[Dict[str, Any]]:
     """
-    Return mails sent by `username_lower` (case-insensitive index).
+    Return mails sent by `username_lower` (case-insensitive index),
+    including images and metadata.
     """
     q = (
         _db.collection("mail")
-           .where("fromUsernameLower", "==", username_lower)
+           .where("fromUsernameLower", "==", username_lower.lower())
            .order_by("createdAt", direction=firestore.Query.DESCENDING)
            .limit(limit)
     )
-    return [{"id": d.id, **(d.to_dict() or {})} for d in q.stream()]
+    return [_serialize_mail_doc(d) for d in q.stream()]

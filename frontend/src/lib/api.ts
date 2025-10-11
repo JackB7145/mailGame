@@ -12,7 +12,8 @@ async function getToken(): Promise<string> {
     toUsername: string;
     subject?: string;
     body: string;
-    provider?: "NONE" | "MANUAL" | "LOB" | "POSTGRID";
+    provider?: "NONE";
+    images?: [] 
   }) {
     const token = await getToken();
     const raw = localStorage.getItem("mailme:activeUser");
@@ -30,6 +31,7 @@ async function getToken(): Promise<string> {
         subject: input.subject ?? null,
         body: input.body,
         provider: "NONE",
+        images: input.images
       }),
     });
 
@@ -117,3 +119,4 @@ export async function saveCustomizationFor(
   if (!res.ok) throw new Error(await res.text());
   return res.json(); // { ok: true }
 }
+

@@ -10,6 +10,7 @@ class SendMailRequest(BaseModel):
     subject: Optional[str] = None
     body: str = Field(..., min_length=1)
     provider: Optional[Provider] = "NONE"
+    images: list
 
 class MailDoc(BaseModel):
     id: str
@@ -24,6 +25,8 @@ class MailDoc(BaseModel):
 
     subject: Optional[str] = None
     body: str
+    images: list
 
     status: Literal["STORED", "SENT", "FAILED"] = "STORED"
     createdAt: Optional[Any] = None
+
