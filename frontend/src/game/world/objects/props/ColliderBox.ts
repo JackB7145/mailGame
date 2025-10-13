@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { BaseObject, WorldObject } from "../BaseObjects";
+import { BaseObject, WorldObject, StaticBodyWithOffsets } from "../BaseObjects";
 import { ObjectFactory } from "../objectFactory";
 import { Item } from "../../layout";
 
@@ -17,51 +17,52 @@ export class ColliderBox extends BaseObject {
   ) {
     super(scene, obstacles, "collider", x, y);
 
-    // ✅ Use rectangle + static body instead of textureless staticImage
-    this.body = this.addStaticBox(0, 0, w, h);
+    // Create a real rectangle collider
+    this.body = this.addStaticBox(0, 0, w, h) as Phaser.GameObjects.Rectangle & {
+      body: Phaser.Physics.Arcade.StaticBody;
+    };
 
-    // Hide rectangle visually — physics only
+    // Hide it visually; it's a physics-only box
     this.body.setVisible(false);
 
-    // Debug overlay for editor mode
+    // Optional debug overlay
     this.debugGraphic = this.addGraphics((g) => {
       g.fillStyle(0xff0000, 0.3).fillRect(-w / 2, -h / 2, w, h);
       g.lineStyle(1, 0xff0000, 0.8).strokeRect(-w / 2, -h / 2, w, h);
     });
 
-    // Show if editor active
     const inEditor = (scene as any).editor !== undefined;
     this.debugGraphic.setVisible(!!inEditor);
   }
 
   /**
-   * Creates a static physics rectangle at given offsets relative to container.
-   * This fixes the issue where staticImage() produced a zero-sized collider.
+   * Override: create a static Rectangle instead of an Image.
    */
-  protected addStaticBox(dx: number, dy: number, w: number, h: number) {
-    // Make a real geometry rectangle
+  protected addStaticBox(dx: number, dy: number, w: number, h: number): StaticBodyWithOffsets {
     const rect = this.scene.add.rectangle(
       this.container.x + dx,
       this.container.y + dy,
       w,
       h,
       0x000000,
-      0 // transparent
-    ) as Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.StaticBody };
+      0 // fully transparent
+    ) as Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.StaticBody } & {
+      __dx: number;
+      __dy: number;
+    };
 
-    // Add static physics body
     this.scene.physics.add.existing(rect, true);
-
     const body = rect.body as Phaser.Physics.Arcade.StaticBody;
     body.setSize(w, h);
     body.updateFromGameObject();
 
+    rect.__dx = dx;
+    rect.__dy = dy;
     rect.setOrigin(0.5, 0.5);
     rect.setDepth(this.container.y);
 
-    // Track body in groups for collision and management
     this.obstacles.add(rect as unknown as Phaser.GameObjects.GameObject);
-    this.staticBodies.push(rect);
+    this.staticBodies.push(rect as unknown as StaticBodyWithOffsets);
 
     return rect;
   }

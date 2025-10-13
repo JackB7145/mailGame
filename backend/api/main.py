@@ -29,7 +29,7 @@ from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
 app = FastAPI(title="MailGame Backend")
 
-origins = ["http://localhost:5173", "https://frontend-nine-ruddy-95.vercel.app"]
+origins = ["http://localhost:5173", "https://mailmeio.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -235,21 +235,32 @@ async def api_send(req: SendMailRequest):
     return Response(status_code=204)
 
 @app.delete("/v1/mail/{mail_id}")
-async def delete_mail(mail_id: str, uid: str = Depends(verify_bearer)):
-    _, caller_lower = _get_or_provision_caller_username(uid)
-    db = gcf.Client()
-    doc_ref = db.collection("mail").document(mail_id)
-    snap = doc_ref.get()
+async def delete_mail(
+    mail_id: str,
+    body: Dict = Body(...),
+    uid: str = Depends(verify_bearer),
+):
+    try:
+        # username is provided by client body (not derived from token)
+        username_lower = body.get("username", "").lower()
 
-    if not snap.exists:
-        raise HTTPException(status_code=404, detail="Mail not found")
-    data = snap.to_dict() or {}
+        db = gcf.Client()
+        doc_ref = db.collection("mail").document(mail_id)
+        snap = doc_ref.get()
 
-    if data.get("toUsernameLower") != caller_lower:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this mail")
+        if not snap.exists:
+            raise HTTPException(status_code=404, detail="Mail not found")
 
-    doc_ref.delete()
-    return {"ok": True, "id": mail_id}
+        data = snap.to_dict() or {}
+
+        # confirm ownership using provided username
+        if data.get("toUsernameLower") != username_lower:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this mail")
+
+        doc_ref.delete()
+        return {"ok": True, "id": mail_id}
+    except Exception as e:
+        print(f'Error: {e} Received Body: {body}')
 
 @app.get("/v1/users/exists")
 async def username_exists(username: str):

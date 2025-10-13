@@ -91,10 +91,24 @@ export async function fetchOutbox() {
 
 export async function deleteMail(mailId: string) {
   const token = await getToken();
+
+  // Grab active user from localStorage
+  const activeUser = localStorage.getItem("mailme:activeUser");
+  if (!activeUser) throw new Error("Active user not found in localStorage");
+
+  const { username } = JSON.parse(activeUser);
+  if (!username) throw new Error("Username missing in activeUser object");
+
+  // Send username in request body
   const res = await fetch(`${API_BASE}/v1/mail/${mailId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ username }), // 👈 backend expects this
   });
+
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
