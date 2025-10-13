@@ -12,3 +12,4 @@ ServiceAccount.json
 
 # VS Code
 .vscode/
+.vercel

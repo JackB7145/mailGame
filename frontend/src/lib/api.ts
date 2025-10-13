@@ -1,6 +1,6 @@
 import { auth } from "./firebase";
 
-const API_BASE = "http://127.0.0.1:8000";
+export const API_BASE = "https://backend-tan-iota-68.vercel.app";
 
 async function getToken(): Promise<string> {
   const token = await auth.currentUser?.getIdToken();
@@ -13,7 +13,7 @@ async function getToken(): Promise<string> {
     subject?: string;
     body: string;
     provider?: "NONE";
-    images?: [] 
+    images?: { value: string; text: string }[]
   }) {
     const token = await getToken();
     const raw = localStorage.getItem("mailme:activeUser");
@@ -42,21 +42,52 @@ async function getToken(): Promise<string> {
 
 export async function fetchInbox() {
   const token = await getToken();
+
+  // Grab active user from localStorage
+  const activeUser = localStorage.getItem("mailme:activeUser");
+  if (!activeUser) throw new Error("Active user not found in localStorage");
+
+  const { username } = JSON.parse(activeUser);
+  if (!username) throw new Error("Username missing in activeUser object");
+
+  // Send username in request body
   const res = await fetch(`${API_BASE}/v1/mail/inbox`, {
-    headers: { Authorization: `Bearer ${token}` },
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ username }),
   });
+
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function fetchOutbox() {
   const token = await getToken();
+
+  // Grab active user from localStorage
+  const activeUser = localStorage.getItem("mailme:activeUser");
+  if (!activeUser) throw new Error("Active user not found in localStorage");
+
+  const { username } = JSON.parse(activeUser);
+  if (!username) throw new Error("Username missing in activeUser object");
+
+  // Send username in request body
   const res = await fetch(`${API_BASE}/v1/mail/outbox`, {
-    headers: { Authorization: `Bearer ${token}` },
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ username }),
   });
+
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
 
 export async function deleteMail(mailId: string) {
   const token = await getToken();

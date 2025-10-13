@@ -1,9 +1,7 @@
 // src/game/scenes/MailScene.ts
 import Phaser from "phaser";
-import { Music } from "../audio/music";
 import { Hud } from "../ui/Hud";
 import { createVolumeSlider } from "../ui/HudVolumeSlider";
-import { createFullscreenButton } from "../ui/widgets/FullscreenButton";
 
 import { Customizer, Customization } from "../ui/Customizer";
 import { startMusicWithUnlock } from "../systems/MusicStarter";
@@ -16,6 +14,7 @@ import { Item } from "../world/layout";
 
 // ✅ session helpers handle all customization logic
 import { loadCustomization, getCustomization, setCustomizationGlobal } from "../state/session";
+import { createFullscreenButton } from "../ui/widgets/FullScreenButton";
 
 type Spawn = { x: number; y: number };
 

@@ -2,7 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithCustomToken } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-
+import { API_BASE } from "./api";
 /**
  * No anonymous auth. We sign in explicitly as the username stored in localStorage.
  * Backend must expose POST /v1/auth/dev-login to mint a Firebase Custom Token
@@ -22,7 +22,6 @@ const firebaseConfig = {
   measurementId: "G-69MSZHXKB7",
 };
 
-const API_BASE = "http://127.0.0.1:8000";
 const AUTH_KEY = "mailme:activeUser";
 
 const app = initializeApp(firebaseConfig);

@@ -103,7 +103,7 @@ export default function App() {
   }, [signedIn]);
 
   // Actual API call, triggered by the modal via its onSend prop.
-  async function handleSend(toName: string, subject: string, body: string, images: []) {
+  async function handleSend(toName: string, subject: string, body: string, images: { value: string; text: string }[]) {
     await sendMailViaBackend({
       toUsername: toName, // backend expects username/handle
       subject,
@@ -150,8 +150,8 @@ export default function App() {
         }}
       />
 
-      <InboxModal open={inboxOpen} meUid={username ?? ""} onClose={() => setInboxOpen(false)} />
-      <OutboxModal open={outboxOpen} meUid={username ?? ""} onClose={() => setOutboxOpen(false)} />
+      <InboxModal open={inboxOpen} meName={username ?? ""} onClose={() => setInboxOpen(false)} />
+      <OutboxModal open={outboxOpen} meName={username ?? ""} onClose={() => setOutboxOpen(false)} />
     </div>
   );
 }

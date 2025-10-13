@@ -3,7 +3,7 @@ import os
 import re
 from typing import Optional, List, Tuple, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, Response, Query
+from fastapi import Body, FastAPI, Depends, HTTPException, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -29,7 +29,7 @@ from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
 app = FastAPI(title="MailGame Backend")
 
-origins = ["*"]
+origins = ["http://localhost:5173", "https://frontend-nine-ruddy-95.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -168,13 +168,20 @@ async def set_my_username(body: SetUsernameIn, uid: str = Depends(verify_bearer)
     return {"ok": True, "username": desired}
 
 # ✅ Inbox route returns full mails with images
-@app.get("/v1/mail/inbox")
-async def api_inbox(uid: str = Depends(verify_bearer), limit: int = Query(20, ge=1, le=100)):
-    _, caller_lower = _get_or_provision_caller_username(uid)
+@app.post("/v1/mail/inbox")
+async def api_inbox(
+    body: dict = Body(...),
+    uid: str = Depends(verify_bearer),
+    limit: int = Query(20, ge=1, le=100)
+):
+    username = body.get("username")
+    if not username:
+        return {"ok": False, "error": "Missing username in request body"}
+
     db = gcf.Client()
     q = (
         db.collection("mail")
-        .where("toUsernameLower", "==", caller_lower)
+        .where("toUsernameLower", "==", username.lower())
         .order_by("createdAt", direction=gcf.Query.DESCENDING)
         .limit(limit)
     )
@@ -182,18 +189,26 @@ async def api_inbox(uid: str = Depends(verify_bearer), limit: int = Query(20, ge
     return {"ok": True, "items": [_serialize_mail(s) for s in snaps]}
 
 # ✅ Outbox route returns full mails with images
-@app.get("/v1/mail/outbox")
-async def api_outbox(uid: str = Depends(verify_bearer), limit: int = Query(20, ge=1, le=100)):
-    _, caller_lower = _get_or_provision_caller_username(uid)
+@app.post("/v1/mail/outbox")
+async def api_outbox(
+    body: dict = Body(...),
+    uid: str = Depends(verify_bearer),
+    limit: int = Query(20, ge=1, le=100)
+):
+    username = body.get("username")
+    if not username:
+        return {"ok": False, "error": "Missing username in request body"}
+
     db = gcf.Client()
     q = (
         db.collection("mail")
-        .where("fromUsernameLower", "==", caller_lower)
+        .where("fromUsernameLower", "==", username.lower())
         .order_by("createdAt", direction=gcf.Query.DESCENDING)
         .limit(limit)
     )
     snaps = list(q.stream())
     return {"ok": True, "items": [_serialize_mail(s) for s in snaps]}
+
 
 # ✅ Mail send includes images and full username fields
 @app.post("/v1/mail/send", status_code=204)

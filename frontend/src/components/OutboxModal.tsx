@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchOutbox } from "../lib/api";
 import { useAccent } from "../hooks/useAccents";
 
-type Props = { open: boolean; meUid: string; onClose: () => void };
+type Props = { open: boolean; meName: string; onClose: () => void };
 
 type MailRow = {
   id: string;
@@ -28,7 +28,7 @@ function formatCreatedAt(createdAt: any): string {
   return "just now";
 }
 
-export default function OutboxModal({ open, meUid, onClose }: Props) {
+export default function OutboxModal({ open, meName, onClose }: Props) {
   const [rows, setRows] = useState<MailRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState<{ url: string; text: string } | null>(null);
