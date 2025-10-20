@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchOutbox } from "../lib/api";
 import { useAccent } from "../hooks/useAccents";
+import LoadingOverlay from "./LoadingOverlay";
 
 type Props = { open: boolean; meName: string; onClose: () => void };
 
@@ -32,11 +33,13 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
   const [rows, setRows] = useState<MailRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState<{ url: string; text: string } | null>(null);
+  const [showLoading, setShowLoading] = useState(false);
   const { hex, rgba } = useAccent();
 
   useEffect(() => {
     if (!open) return;
     (async () => {
+      setShowLoading(true);
       try {
         const data = await fetchOutbox();
         const items = Array.isArray(data?.items)
@@ -48,6 +51,8 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
       } catch (e) {
         console.error("Failed to fetch outbox", e);
         setRows([]);
+      } finally {
+        setShowLoading(false);
       }
     })();
   }, [open]);
@@ -70,6 +75,7 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
 
   return (
     <>
+      {showLoading && <LoadingOverlay />}
       <div style={backdrop}>
         <div style={scanlines} />
         <div style={modalDyn}>
@@ -103,9 +109,7 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
                       border: expanded ? `2px solid ${hex}` : card.border,
                       position: "relative",
                     }}
-                    onClick={() =>
-                      setExpandedId(expanded ? null : m.id)
-                    }
+                    onClick={() => setExpandedId(expanded ? null : m.id)}
                   >
                     <div style={expandHint}>
                       {expanded ? "▼ Collapse" : "▶ Click to Expand"}
@@ -137,11 +141,7 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
                           <div style={imageGrid}>
                             {images.map((img, i) => (
                               <div key={i} style={imageCard}>
-                                <img
-                                  src={img.url}
-                                  alt="attachment"
-                                  style={imageFrontImg}
-                                />
+                                <img src={img.url} alt="attachment" style={imageFrontImg} />
                                 <button
                                   style={expandBtn}
                                   onClick={(e) => {
@@ -172,22 +172,14 @@ export default function OutboxModal({ open, meName, onClose }: Props) {
         </div>
       </div>
 
-      {/* Expanded image viewer */}
       {expandedImage && (
         <div style={zoomOverlay}>
           <div style={zoomInner}>
-            <img
-              src={expandedImage.url}
-              alt="expanded"
-              style={zoomedImgStyle}
-            />
+            <img src={expandedImage.url} alt="expanded" style={zoomedImgStyle} />
             <div style={imageTextBox}>
               <p>{expandedImage.text || "(no OCR text available)"}</p>
             </div>
-            <button
-              onClick={() => setExpandedImage(null)}
-              style={closeZoomBtn}
-            >
+            <button onClick={() => setExpandedImage(null)} style={closeZoomBtn}>
               Close
             </button>
           </div>

@@ -11,7 +11,7 @@ type Props = {
     subject: string,
     body: string,
     images: { value: string; text: string }[]
-  ) => Promise<number>; // expect status code (e.g. 204)
+  ) => Promise<Response>; // expects full Response object
   onClose: () => void;
   onOpenOutbox: () => void;
 };
@@ -40,6 +40,10 @@ export default function ComposeModal({
 
   useEffect(() => {
     if (!open) return;
+    resetForm();
+  }, [open, initialToName]);
+
+  const resetForm = () => {
     setToName(initialToName ?? "");
     setSubject("");
     setBody("");
@@ -48,7 +52,7 @@ export default function ComposeModal({
     setCheckingRecipient(false);
     setImages([]);
     setSendStatus(null);
-  }, [open, initialToName]);
+  };
 
   if (!open) return null;
 
@@ -59,20 +63,18 @@ export default function ComposeModal({
 
     try {
       const cleanName = toName.replace(/\s+/g, " ").trim();
-      const status = await onSend(cleanName, subject.trim(), body, images);
+      const response = await onSend(cleanName, subject.trim(), body, images);
 
-      if (status === 204) {
-        // ✅ Success
+      if (response.ok) {
         setSendStatus("success");
-        setToName("");
-        setSubject("");
-        setBody("");
-        setImages([]);
-        setValidRecipient(null);
+
+        // ⏱ Wait 2 seconds before clearing form & resetting feedback
+        setTimeout(() => {
+          resetForm();
+        }, 2000);
       } else {
-        // ❌ Unexpected response
         setSendStatus("error");
-        console.warn("Unexpected response status:", status);
+        console.warn("Unexpected response", response.status);
       }
     } catch (err) {
       console.error("Failed to send mail", err);

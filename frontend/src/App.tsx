@@ -104,13 +104,14 @@ export default function App() {
 
   // Actual API call, triggered by the modal via its onSend prop.
   async function handleSend(toName: string, subject: string, body: string, images: { value: string; text: string }[]) {
-    await sendMailViaBackend({
+    const res = await sendMailViaBackend({
       toUsername: toName, // backend expects username/handle
       subject,
       body,
       provider: "NONE",
       images
     });
+    return res;
   }
 
   if (!signedIn) {

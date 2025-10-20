@@ -36,7 +36,7 @@ async function getToken(): Promise<string> {
     });
 
     if (!res.ok) throw new Error(`Mail send failed: ${res.status}`);
-    return res.json();
+    return res;
   }
 
 
