@@ -11,7 +11,7 @@ type Props = {
     subject: string,
     body: string,
     images: { value: string; text: string }[]
-  ) => Promise<void>;
+  ) => Promise<number>; // expect status code (e.g. 204)
   onClose: () => void;
   onOpenOutbox: () => void;
 };
@@ -31,6 +31,7 @@ export default function ComposeModal({
   const [validRecipient, setValidRecipient] = useState<null | boolean>(null);
   const [checkingRecipient, setCheckingRecipient] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
+  const [sendStatus, setSendStatus] = useState<null | "success" | "error">(null);
 
   const { hex, rgba } = useAccent();
 
@@ -46,6 +47,7 @@ export default function ComposeModal({
     setValidRecipient(null);
     setCheckingRecipient(false);
     setImages([]);
+    setSendStatus(null);
   }, [open, initialToName]);
 
   if (!open) return null;
@@ -53,12 +55,28 @@ export default function ComposeModal({
   const handleSend = async () => {
     setBusy(true);
     setShowLoading(true);
+    setSendStatus(null);
+
     try {
       const cleanName = toName.replace(/\s+/g, " ").trim();
-      await onSend(cleanName, subject.trim(), body, images);
-      onClose(); // Close after success
+      const status = await onSend(cleanName, subject.trim(), body, images);
+
+      if (status === 204) {
+        // ✅ Success
+        setSendStatus("success");
+        setToName("");
+        setSubject("");
+        setBody("");
+        setImages([]);
+        setValidRecipient(null);
+      } else {
+        // ❌ Unexpected response
+        setSendStatus("error");
+        console.warn("Unexpected response status:", status);
+      }
     } catch (err) {
       console.error("Failed to send mail", err);
+      setSendStatus("error");
     } finally {
       setBusy(false);
       setShowLoading(false);
@@ -170,9 +188,7 @@ export default function ComposeModal({
             />
           </div>
 
-          {checkingRecipient && (
-            <div style={note}>Checking recipient…</div>
-          )}
+          {checkingRecipient && <div style={note}>Checking recipient…</div>}
           {validRecipient === false && (
             <div style={noteErr}>No user found with that name.</div>
           )}
@@ -265,6 +281,10 @@ export default function ComposeModal({
                   : checkingRecipient
                   ? "Verifying recipient…"
                   : "Fill 'to' and 'body' to enable send."
+                : sendStatus === "success"
+                ? "✅ Mail sent successfully!"
+                : sendStatus === "error"
+                ? "❌ Failed to send mail."
                 : "> ready"}
             </span>
             <div style={{ display: "flex", gap: 8 }}>
@@ -286,22 +306,97 @@ export default function ComposeModal({
   );
 }
 
-/* --- Styles (unchanged base aesthetic) --- */
+/* --- Styles (same aesthetic) --- */
 const mono = "ui-monospace, Menlo, Monaco, 'Courier New', monospace";
-const backdrop: React.CSSProperties = { position: "fixed", inset: 0, background: "radial-gradient(1200px 800px at 50% 0%, rgba(0,255,110,0.06), transparent 60%) rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 };
-const scanlines: React.CSSProperties = { position: "absolute", inset: 0, pointerEvents: "none", background: "repeating-linear-gradient(to bottom, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px, transparent 4px)" };
-const modal: React.CSSProperties = { width: 640, maxWidth: "92vw", maxHeight: "86vh", overflow: "auto", background: "#000", color: "#00ff6a", borderRadius: 8, fontFamily: mono, padding: 14 };
-const header: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 };
-const row: React.CSSProperties = { display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" };
-const rowArea: React.CSSProperties = { display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "start" };
-const baseField: React.CSSProperties = { background: "rgba(0,0,0,0.8)", color: "#baffd6", borderRadius: 6, outline: "none", fontFamily: mono, fontSize: 14, padding: "8px 10px" };
+const backdrop: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background:
+    "radial-gradient(1200px 800px at 50% 0%, rgba(0,255,110,0.06), transparent 60%) rgba(0,0,0,0.9)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 40,
+};
+const scanlines: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+  background:
+    "repeating-linear-gradient(to bottom, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px, transparent 4px)",
+};
+const modal: React.CSSProperties = {
+  width: 640,
+  maxWidth: "92vw",
+  maxHeight: "86vh",
+  overflow: "auto",
+  background: "#000",
+  color: "#00ff6a",
+  borderRadius: 8,
+  fontFamily: mono,
+  padding: 14,
+};
+const header: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  fontWeight: 700,
+};
+const row: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "120px 1fr",
+  gap: 10,
+  alignItems: "center",
+};
+const rowArea: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "120px 1fr",
+  gap: 10,
+  alignItems: "start",
+};
+const baseField: React.CSSProperties = {
+  background: "rgba(0,0,0,0.8)",
+  color: "#baffd6",
+  borderRadius: 6,
+  outline: "none",
+  fontFamily: mono,
+  fontSize: 14,
+  padding: "8px 10px",
+};
 const input: React.CSSProperties = { ...baseField, height: 36 };
-const textarea: React.CSSProperties = { ...baseField, height: 220, resize: "vertical", lineHeight: 1.4 };
-const footer: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 };
+const textarea: React.CSSProperties = {
+  ...baseField,
+  height: 220,
+  resize: "vertical",
+  lineHeight: 1.4,
+};
+const footer: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 6,
+};
 const hint: React.CSSProperties = { fontSize: 12, opacity: 0.8 };
-const btn: React.CSSProperties = { background: "transparent", borderRadius: 4, fontFamily: mono, padding: "6px 12px", cursor: "pointer", textTransform: "uppercase", letterSpacing: 1 };
+const btn: React.CSSProperties = {
+  background: "transparent",
+  borderRadius: 4,
+  fontFamily: mono,
+  padding: "6px 12px",
+  cursor: "pointer",
+  textTransform: "uppercase",
+  letterSpacing: 1,
+};
 const btnDisabled: React.CSSProperties = { opacity: 0.5, cursor: "not-allowed" };
-const label: React.CSSProperties = { textTransform: "uppercase", letterSpacing: 1, fontSize: 12, opacity: 0.9 };
-const note: React.CSSProperties = { margin: "-6px 0 4px 120px", fontSize: 12, opacity: 0.8 };
+const label: React.CSSProperties = {
+  textTransform: "uppercase",
+  letterSpacing: 1,
+  fontSize: 12,
+  opacity: 0.9,
+};
+const note: React.CSSProperties = {
+  margin: "-6px 0 4px 120px",
+  fontSize: 12,
+  opacity: 0.8,
+};
 const noteErr: React.CSSProperties = { ...note, color: "rgba(255,80,80,0.95)" };
 const noteOk: React.CSSProperties = { ...note, color: "rgba(0,255,140,0.95)" };

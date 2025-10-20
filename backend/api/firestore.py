@@ -41,10 +41,15 @@ def create_mail_doc(data: Dict[str, Any]) -> str:
       fromUsername, fromUsernameLower, toUsername, toUsernameLower, ...
     No UUID fields should be present.
     """
-    ref = _db.collection("mail").document()
-    data.setdefault("createdAt", firestore.SERVER_TIMESTAMP)
-    ref.set(data)
-    return ref.id
+    try:
+        ref = _db.collection("mail").document()
+        data.setdefault("createdAt", firestore.SERVER_TIMESTAMP)
+        ref.set(data)
+        print('Mail succesfully uplodoaded to the DB')
+        return True
+    except Exception as e:
+        print(f'Error uploading mail to the DB: {e}')
+        return False
 
 
 def update_mail_doc(mail_id: str, patch: Dict[str, Any]) -> None:
