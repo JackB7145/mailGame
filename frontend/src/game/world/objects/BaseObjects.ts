@@ -8,11 +8,20 @@ export interface WorldObject {
   destroy(): void;
 }
 
-/** Extend Phaser’s static body with offset metadata */
-type StaticBodyWithOffsets = Phaser.Types.Physics.Arcade.ImageWithStaticBody & {
-  __dx: number;
-  __dy: number;
-};
+/**
+ * Extend any static body (Image or Rectangle) with offset metadata.
+ * This lets derived classes choose which shape they want to use.
+ */
+export type StaticBodyWithOffsets =
+  | (Phaser.Types.Physics.Arcade.ImageWithStaticBody & {
+      __dx: number;
+      __dy: number;
+    })
+  | (Phaser.GameObjects.Rectangle & {
+      body: Phaser.Physics.Arcade.StaticBody;
+      __dx: number;
+      __dy: number;
+    });
 
 /**
  * Base for all world objects.
@@ -29,7 +38,6 @@ export abstract class BaseObject implements WorldObject {
   /** Keep refs to static bodies so we can move/cleanup them with the object */
   protected staticBodies: StaticBodyWithOffsets[] = [];
 
-  // NOTE: include `obstacles` in the ctor and keep it on the instance
   constructor(
     scene: Phaser.Scene,
     obstacles: Phaser.Physics.Arcade.StaticGroup,
@@ -49,7 +57,7 @@ export abstract class BaseObject implements WorldObject {
     this.container.setPosition(x, y);
     this.container.setDepth(y);
 
-    // keep static bodies aligned (we store the original offset in __dx/__dy)
+    // Keep static bodies aligned (use stored offsets)
     this.staticBodies.forEach((b) => {
       b.setPosition(x + b.__dx, y + b.__dy);
       (b.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
@@ -81,22 +89,25 @@ export abstract class BaseObject implements WorldObject {
   }
 
   /**
-   * Create a static physics box at world coords, relative to this.container’s position.
-   * Call without passing the obstacles; we use the instance’s group.
+   * Default static collider box using a staticImage.
+   * Derived classes can override this to use Rectangles instead.
    */
-  protected addStaticBox(dx: number, dy: number, w: number, h: number) {
+  protected addStaticBox(dx: number, dy: number, w: number, h: number): StaticBodyWithOffsets {
     const img = this.scene.physics.add.staticImage(
       this.container.x + dx,
-      this.container.y + dy, 
+      this.container.y + dy,
       ""
-    ) as StaticBodyWithOffsets;
+    ) as Phaser.Types.Physics.Arcade.ImageWithStaticBody & {
+      __dx: number;
+      __dy: number;
+    };
 
-    // remember relative offsets so we can move the body when the object moves
     img.__dx = dx;
     img.__dy = dy;
 
-    (img.body as Phaser.Physics.Arcade.StaticBody).setSize(w, h);
-    (img.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+    const body = img.body as Phaser.Physics.Arcade.StaticBody;
+    body.setSize(w, h);
+    body.updateFromGameObject();
     img.setDepth(this.container.y);
 
     this.obstacles.add(img as unknown as Phaser.GameObjects.GameObject);
@@ -106,13 +117,9 @@ export abstract class BaseObject implements WorldObject {
 
   destroy() {
     this.staticBodies.forEach((b) => {
-      // Remove from the physics group AND destroy the game object
       this.obstacles.remove(b, true, true);
     });
     this.staticBodies = [];
-
-    // Destroy the container and all children (graphics, text, etc.)
     this.container.destroy(true);
   }
-
 }
