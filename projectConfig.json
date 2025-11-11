@@ -1,0 +1,19 @@
+{
+  "name": "MailGame",
+  "description": "Interactive web app simulating sending and receiving digital letters in real time",
+  "fullDescription": "Developed a full-stack interactive application that gamifies digital communication through real-time mail delivery between users. Built with Next.js, Firebase, and Phaser for dynamic animations, MailGame combines creativity, messaging, and instant feedback in a single responsive platform.",
+  "techStack": ["Next.js", "TypeScript", "Firebase", "Phaser", "TailwindCSS"],
+  "features": [
+    "Real-time digital mail delivery and user interaction",
+    "Dynamic animations powered by Phaser",
+    "Firebase authentication and Firestore data persistence",
+    "Customizable message templates and themes",
+    "Optimized for Vercel deployment and SSR",
+    "Cloud-synced storage for persistent conversations"
+  ],
+  "metrics": {
+    "commits": "32",
+    "pullRequests": "4",
+    "linesOfCode": "~4,800"
+  }
+}
